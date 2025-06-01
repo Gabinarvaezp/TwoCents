@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import {
   Box, Flex, Avatar, Text, Button, HStack, VStack, Divider, IconButton, useToast,
   Modal, ModalOverlay, ModalContent, ModalHeader, ModalBody, ModalFooter, Input, Tabs, TabList, TabPanels, Tab, TabPanel, Heading, Progress, SimpleGrid, Badge, Select, Table, Thead, Tbody, Tr, Th, Td,
-  extendTheme, ChakraProvider, useBreakpointValue
+  extendTheme, ChakraProvider, useBreakpointValue, Checkbox
 } from "@chakra-ui/react";
 import { FaPlus, FaSync, FaSignOutAlt, FaPiggyBank, FaUsers, FaHome, FaTrash, FaFileExport, FaArrowDown, FaArrowUp, FaChevronDown, FaChevronUp, FaRegCalendarAlt, FaRegCreditCard, FaTable, FaChevronLeft, FaChevronRight } from "react-icons/fa";
 import * as XLSX from "xlsx";
@@ -56,7 +56,7 @@ const users = [
 ];
 const COP_TO_USD = 4500;
 const CATEGORIES = [
-  "Food", "Golf", "Car Wash", "Travel", "Family", "Public Transport", "Housing", "Beer", "Snacks", "Health", "Entertainment/Friends", "Shopping", "Other"
+  "Wifey", "Hubby", "Food", "Golf", "Car Wash", "Travel", "Family", "Public Transport", "Housing", "Beer", "Snacks", "Health", "Entertainment/Friends", "Shopping", "Other"
 ];
 const INCOME_SOURCES = ["First Check", "Second Check", "Both", "Other"];
 const PASTEL_COLORS = [theme.colors.gabby[500], theme.colors.jorgie[500], "#B5EAD7", "#FFDAC1", "#C7CEEA", "#F3B0C3", "#B5B9FF", "#FFD6E0"];
@@ -116,6 +116,22 @@ const TYPE_EMOJIS = {
   debts: "💳"
 };
 
+function FixedExpensesSummary({ fixedExpenses, periodLabel }) {
+  const filtered = fixedExpenses.filter(e => !e.period || e.period === periodLabel);
+  const total = filtered.reduce((sum, e) => sum + Number(e.amount), 0);
+  return (
+    <Box>
+      <Heading size="sm" mb={2}>Automatic deductions for this {periodLabel} period:</Heading>
+      <VStack align="start" spacing={1} mb={2}>
+        {filtered.map(e => (
+          <Text key={e.id}>{e.name}: {formatCurrency(e.amount, e.currency)}</Text>
+        ))}
+      </VStack>
+      <Text fontWeight="bold">Total: {formatCurrency(total, filtered[0]?.currency || 'USD')}</Text>
+    </Box>
+  );
+}
+
 function DashboardContent() {
   // --- Login State ---
   const [showLogin, setShowLogin] = useState(() => !localStorage.getItem("activeUser"));
@@ -138,8 +154,8 @@ function DashboardContent() {
     async function fetchMovements() {
       const { data, error } = await supabase.from('movements').select('*');
       if (!error) {
-        const gabbyMovs = data.filter(m => m.user === "Gabby");
-        const jorgieMovs = data.filter(m => m.user === "Jorgie");
+        const gabbyMovs = data.filter(m => m.username === "Gabby");
+        const jorgieMovs = data.filter(m => m.username === "Jorgie");
         setMovements([gabbyMovs, jorgieMovs]);
       }
     }
@@ -182,8 +198,8 @@ function DashboardContent() {
           .then(({ data }) => {
             // Agrupa por usuario
             setMovements([
-              (data || []).filter(m => m.user === 'Gabby'),
-              (data || []).filter(m => m.user === 'Jorgie'),
+              (data || []).filter(m => m.username === 'Gabby'),
+              (data || []).filter(m => m.username === 'Jorgie'),
             ]);
           });
       })
@@ -201,13 +217,17 @@ function DashboardContent() {
   const [editGoalIndex, setEditGoalIndex] = useState(null);
   const [goalForm, setGoalForm] = useState({ name: "", target: "", date: "" });
 
-  const [movementModal, setMovementModal] = useState(false);
+  const [showMovementModal, setShowMovementModal] = useState(false);
   const [movementType, setMovementType] = useState("income");
   const [movementAmount, setMovementAmount] = useState("");
-  const [movementCategory, setMovementCategory] = useState("");
-  const [movementSource, setMovementSource] = useState(INCOME_SOURCES[0]);
-  const [movementAuto, setMovementAuto] = useState(false);
   const [movementCurrency, setMovementCurrency] = useState(user.currency);
+  const [movementSource, setMovementSource] = useState("First Check");
+  const [movementCategory, setMovementCategory] = useState("");
+  const [movementAuto, setMovementAuto] = useState(false);
+  const [autoDeductAmount, setAutoDeductAmount] = useState("");
+  const [autoDeductInstallments, setAutoDeductInstallments] = useState("");
+  const [autoDeductCheck, setAutoDeductCheck] = useState("First Check");
+  const [autoDeductGoals, setAutoDeductGoals] = useState([]);
 
   const [tab, setTab] = useState(0);
   const [monthSummaryOpen, setMonthSummaryOpen] = useState(false);
@@ -217,6 +237,134 @@ function DashboardContent() {
   });
   const [showMonthMovements, setShowMonthMovements] = useState({});
   const toast = useToast();
+
+  // --- Movements by Month for Home Tab ---
+  const userMovementsByMonth = getMovementsByMonth(movements[activeUser]);
+  const allMonths = Object.keys(userMovementsByMonth).sort((a, b) => b.localeCompare(a)); // newest first
+  const [selectedMovMonth, setSelectedMovMonth] = useState("");
+  useEffect(() => {
+    if (!selectedMovMonth && allMonths.length > 0) {
+      setSelectedMovMonth(allMonths[0]);
+    }
+    // Si el mes seleccionado ya no existe, selecciona el primero disponible
+    if (selectedMovMonth && !allMonths.includes(selectedMovMonth) && allMonths.length > 0) {
+      setSelectedMovMonth(allMonths[0]);
+    }
+  }, [allMonths, selectedMovMonth]);
+  const selectedMovements = selectedMovMonth ? userMovementsByMonth[selectedMovMonth] || [] : [];
+
+  // --- Fixed Expenses State ---
+  const [fixedExpenses, setFixedExpenses] = useState([]);
+  const [showFixedSummary, setShowFixedSummary] = useState(false);
+  const [fixedPeriod, setFixedPeriod] = useState('first');
+  const [showCheckModal, setShowCheckModal] = useState(false);
+  const [checkAmount, setCheckAmount] = useState('');
+  const [checkCurrency, setCheckCurrency] = useState(user.currency);
+  const [lastCheck, setLastCheck] = useState(null);
+  const [savingsGoalMap, setSavingsGoalMap] = useState({});
+  const [showFixedExpenseModal, setShowFixedExpenseModal] = useState(false);
+  const [editingFixedExpense, setEditingFixedExpense] = useState(null);
+  const [fixedExpenseForm, setFixedExpenseForm] = useState({
+    name: "",
+    amount: "",
+    currency: "USD",
+    frequency: "monthly",
+    period: "",
+    type: "expense",
+    active: true
+  });
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [expenseToDelete, setExpenseToDelete] = useState(null);
+
+  const [paycheckDeductions, setPaycheckDeductions] = useState([]); // [{id, name, type, amount, currency, assignGoals: [goalId, ...]}]
+
+  useEffect(() => {
+    async function fetchFixedExpenses() {
+      const { data, error } = await supabase
+        .from('fixed_expenses')
+        .select('*')
+        .eq('active', true);
+      if (!error) setFixedExpenses(data || []);
+    }
+    fetchFixedExpenses();
+  }, []);
+
+  useEffect(() => {
+    async function fetchGoals() {
+      const { data, error } = await supabase.from('goals').select('*').order('inserted_at', { ascending: true });
+      if (!error) setGoals(data || []);
+    }
+    fetchGoals();
+  }, []);
+
+  // --- New: Assign savings to one or more goals ---
+  function handleSavingsGoalChange(fixedExpenseId, selectedGoalIds) {
+    setSavingsGoalMap(prev => ({ ...prev, [fixedExpenseId]: selectedGoalIds }));
+  }
+
+  // --- Updated: Generate automatic movements with savings assigned to goals ---
+  async function generateFixedExpensesMovements(period, username) {
+    for (const expense of fixedExpenses) {
+      if (expense.period && expense.period !== period.label) continue;
+      if (expense.type === 'savings') {
+        // Assign to selected goals
+        const selectedGoalIds = savingsGoalMap[expense.id] || [];
+        if (selectedGoalIds.length > 0) {
+          // Split amount equally among selected goals
+          const splitAmount = Math.floor(Number(expense.amount) / selectedGoalIds.length);
+          for (let i = 0; i < selectedGoalIds.length; i++) {
+            const goal = goals.find(g => g.id === selectedGoalIds[i]);
+            if (!goal) continue;
+            // Check if already exists
+            const { data: existing } = await supabase
+              .from('movements')
+              .select('*')
+              .eq('category', `Saving for ${goal.name}`)
+              .eq('date', period.startDate)
+              .eq('username', username);
+            if (!existing || existing.length === 0) {
+              await supabase.from('movements').insert([{
+                type: 'savings',
+                amount: splitAmount,
+                category: `Saving for ${goal.name}`,
+                currency: expense.currency,
+                date: period.startDate,
+                username: username,
+                auto: true
+              }]);
+            }
+          }
+        }
+      } else {
+        // Normal fixed expense
+        const { data: existing } = await supabase
+          .from('movements')
+          .select('*')
+          .eq('category', expense.name)
+          .eq('date', period.startDate)
+          .eq('username', username);
+        if (!existing || existing.length === 0) {
+          await supabase.from('movements').insert([{
+            type: expense.type,
+            amount: expense.amount,
+            category: expense.name,
+            currency: expense.currency,
+            date: period.startDate,
+            username: username,
+            auto: true
+          }]);
+        }
+      }
+    }
+    toast({ title: 'Automatic movements generated', status: 'success', duration: 2000 });
+    // Refresh movements
+    const { data } = await supabase.from('movements').select('*');
+    if (data) {
+      const gabbyMovs = data.filter(m => m.username === "Gabby");
+      const jorgieMovs = data.filter(m => m.username === "Jorgie");
+      setMovements([gabbyMovs, jorgieMovs]);
+    }
+  }
 
   // --- Responsive helpers ---
   const isMobile = useBreakpointValue({ base: true, md: false });
@@ -237,65 +385,214 @@ function DashboardContent() {
   }
 
   // --- Movement Handlers ---
-  function handleAddMovement() {
-    setMovementType("income");
-    setMovementAmount("");
-    setMovementCategory("");
-    setMovementSource(INCOME_SOURCES[0]);
-    setMovementAuto(false);
-    setMovementCurrency(user.currency);
-    setMovementModal(true);
-  }
-  async function handleMovementSubmit() {
+  async function handleUnifiedMovementSubmit() {
     const amt = parseAmount(movementAmount);
     if (!amt || amt <= 0) {
       toast({ title: "Please enter a valid amount", status: "warning", duration: 2000 });
       return;
     }
-    let newMov = {
-      type: movementType,
+    if (movementType === "income") {
+      if (!movementSource) {
+        toast({ title: "Please select a source", status: "warning" });
+        return;
+      }
+      // Income: amount, currency, source
+      const { error } = await supabase.from('movements').insert([{
+        type: 'income',
       amount: amt,
-      category: movementType === "savings" && movementCategory ? movementCategory : (movementType === "income" || movementType === "savings" ? movementSource : movementCategory),
+        category: movementSource,
       currency: movementCurrency,
       date: todayStr(),
-      auto: movementAuto,
-      user: user.name
-    };
-    // Si savings/debts con contramovimiento, inserta ambos
-    let toInsert = [newMov];
-    if (movementType === "savings" && (movementSource === "First Check" || movementSource === "Second Check" || movementSource === "Both")) {
-      toInsert.push({ type: "income", amount: -amt, category: movementSource, currency: movementCurrency, date: todayStr(), auto: true, user: user.name });
+        username: user.name,
+        auto: false
+      }]);
+      if (error) {
+        toast({ title: "Error saving income", description: error.message, status: "error" });
+        return;
+      }
+    } else if (movementType === "expenses") {
+      if (!movementCategory) {
+        toast({ title: "Please select a category", status: "warning" });
+        return;
+      }
+      const { error } = await supabase.from('movements').insert([{
+        type: 'expenses',
+        amount: amt,
+        category: movementCategory,
+        currency: movementCurrency,
+        date: todayStr(),
+        username: user.name,
+        auto: false
+      }]);
+      if (error) {
+        toast({ title: "Error saving expense", description: error.message, status: "error" });
+        return;
+      }
+    } else if (movementType === "savings") {
+      if (!movementSource) {
+        toast({ title: "Please select a source", status: "warning" });
+        return;
+      }
+      // Si es automático
+      if (movementAuto) {
+        const autoAmt = parseAmount(autoDeductAmount);
+        if (!autoAmt || autoAmt <= 0) {
+          toast({ title: "Enter deduction amount", status: "warning" });
+          return;
+        }
+        if (!autoDeductCheck) {
+          toast({ title: "Select which check is deducted", status: "warning" });
+          return;
+        }
+        if (!autoDeductGoals || autoDeductGoals.length === 0) {
+          toast({ title: "Select at least one goal for savings", status: "warning" });
+          return;
+        }
+        // Divide el monto entre los goals
+        const splitAmt = Math.floor(autoAmt / autoDeductGoals.length);
+        for (let i = 0; i < autoDeductGoals.length; i++) {
+          const goal = goals.find(g => g.id === autoDeductGoals[i]);
+          if (!goal) continue;
+          const { error } = await supabase.from('movements').insert([{
+            type: 'savings',
+            amount: splitAmt,
+            category: `Saving for ${goal.name}`,
+            currency: movementCurrency,
+            date: todayStr(),
+            username: user.name,
+            auto: true
+          }]);
+          if (error) {
+            toast({ title: "Error saving savings", description: error.message, status: "error" });
+            return;
+          }
+        }
+        // Guarda como fixed_expense para automatización futura
+        await supabase.from('fixed_expenses').insert([{
+          name: 'Automatic Savings',
+          amount: autoAmt,
+          currency: movementCurrency,
+          frequency: 'monthly',
+          period: '',
+          username: user.name,
+          type: 'savings',
+          active: true
+        }]);
+      } else {
+        // Savings normal
+        const { error } = await supabase.from('movements').insert([{
+          type: 'savings',
+          amount: amt,
+          category: movementSource,
+          currency: movementCurrency,
+          date: todayStr(),
+          username: user.name,
+          auto: false
+        }]);
+        if (error) {
+          toast({ title: "Error saving savings", description: error.message, status: "error" });
+          return;
+        }
+      }
     } else if (movementType === "debts") {
-      toInsert.push({ type: "income", amount: -amt, category: movementCategory, currency: movementCurrency, date: todayStr(), auto: true, user: user.name });
+      if (!movementCategory) {
+        toast({ title: "Please select a category", status: "warning" });
+        return;
+      }
+      // Si es automático
+      if (movementAuto) {
+        const autoAmt = parseAmount(autoDeductAmount);
+        const installments = parseInt(autoDeductInstallments);
+        if (!autoAmt || autoAmt <= 0) {
+          toast({ title: "Enter deduction amount", status: "warning" });
+          return;
+        }
+        if (!autoDeductCheck) {
+          toast({ title: "Select which check is deducted", status: "warning" });
+          return;
+        }
+        if (!installments || installments <= 0) {
+          toast({ title: "Enter number of installments", status: "warning" });
+          return;
+        }
+        // Crea movimientos para cada cuota (uno por mes/quincena)
+        let cuotas = [];
+        let startDate = new Date();
+        if (autoDeductCheck === 'First Check') {
+          for (let i = 0; i < installments; i++) {
+            let due = new Date(startDate.getFullYear(), startDate.getMonth() + i, 1);
+            cuotas.push(due);
+          }
+        } else if (autoDeductCheck === 'Second Check') {
+          let count = 0;
+          let month = startDate.getMonth();
+          let year = startDate.getFullYear();
+          let day = startDate.getDate() <= 15 ? 1 : 15;
+          while (count < installments) {
+            cuotas.push(new Date(year, month, day));
+            count++;
+            if (day === 1) {
+              day = 15;
+            } else {
+              day = 1;
+              month++;
+              if (month > 11) { month = 0; year++; }
+            }
+          }
+        }
+        for (let i = 0; i < cuotas.length; i++) {
+          const dateStr = cuotas[i].toISOString().slice(0,10);
+          const { error } = await supabase.from('movements').insert([{
+            type: 'debts',
+            amount: autoAmt,
+            category: movementCategory,
+            currency: movementCurrency,
+            date: dateStr,
+            username: user.name,
+            auto: true
+          }]);
+          if (error) {
+            toast({ title: "Error saving debt", description: error.message, status: "error" });
+            return;
+          }
+        }
+        // Guarda como fixed_expense para automatización futura
+        await supabase.from('fixed_expenses').insert([{
+          name: movementCategory,
+          amount: autoAmt,
+          currency: movementCurrency,
+          frequency: autoDeductCheck.toLowerCase(),
+          period: '',
+          username: user.name,
+          type: 'debt',
+          active: true
+        }]);
+      } else {
+        // Debt normal
+        const { error } = await supabase.from('movements').insert([{
+          type: 'debts',
+          amount: amt,
+          category: movementCategory,
+          currency: movementCurrency,
+          date: todayStr(),
+          username: user.name,
+          auto: false
+        }]);
+        if (error) {
+          toast({ title: "Error saving debt", description: error.message, status: "error" });
+          return;
+        }
+      }
     }
-    const { error } = await supabase.from('movements').insert(toInsert);
-    if (error) {
-      toast({ title: "Error saving movement", description: error.message, status: "error" });
-      return;
-    }
-    setMovementModal(false);
-    toast({ title: "Movement added", status: "success", duration: 1500 });
+    setShowMovementModal(false);
     // Refresca movimientos
     const { data } = await supabase.from('movements').select('*');
     if (data) {
-      const gabbyMovs = data.filter(m => m.user === "Gabby");
-      const jorgieMovs = data.filter(m => m.user === "Jorgie");
+      const gabbyMovs = data.filter(m => m.username === "Gabby");
+      const jorgieMovs = data.filter(m => m.username === "Jorgie");
       setMovements([gabbyMovs, jorgieMovs]);
     }
-  }
-  async function handleDeleteMovement(idx) {
-    const mov = movements[activeUser][idx];
-    const { error } = await supabase.from('movements').delete().eq('id', mov.id);
-    if (error) {
-      toast({ title: 'Error deleting movement', description: error.message, status: 'error' });
-    } else {
-      setMovements(movs => {
-        const copy = [...movs];
-        copy[activeUser] = copy[activeUser].filter((_, i) => i !== idx);
-        return copy;
-      });
-      toast({ title: "Movement deleted", status: "info", duration: 1500 });
-    }
+    toast({ title: "Movement added", status: "success", duration: 1500 });
   }
 
   // --- Export Function ---
@@ -418,9 +715,9 @@ function DashboardContent() {
   });
 
   // --- Pie Chart Data (Current Month) ---
-  const now = new Date();
-  const currentMonth = now.getMonth();
-  const currentYear = now.getFullYear();
+  
+  const currentMonth = new Date().getMonth();
+  const currentYear = new Date().getFullYear();
   const pieData = [
     { name: "Income", value: getSummary(movements[activeUser], currency, currentMonth, currentYear).income },
     { name: "Expenses", value: getSummary(movements[activeUser], currency, currentMonth, currentYear).expenses },
@@ -448,15 +745,10 @@ function DashboardContent() {
     });
     return byMonth;
   }
-  const userMovementsByMonth = getMovementsByMonth(movements[activeUser]);
-  const bothMovementsByMonth = {};
-  [0,1].forEach(idx => {
-    const byMonth = getMovementsByMonth(movements[idx]);
-    Object.entries(byMonth).forEach(([k, v]) => {
-      if (!bothMovementsByMonth[k]) bothMovementsByMonth[k] = [[],[]];
-      bothMovementsByMonth[k][idx] = v;
-    });
-  });
+  
+  const now = new Date();
+  const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth()).padStart(2, "0")}`;
+  const currentMonthMovements = userMovementsByMonth[currentMonthKey] || [];
 
   // --- Estado para la moneda de Goals ---
   const [goalCurrency, setGoalCurrency] = useState("USD");
@@ -499,6 +791,200 @@ function DashboardContent() {
     }
     return out;
   }
+
+  // --- Nueva función para ingresar cheque y automatizar descuentos ---
+  async function handleCheckSubmit() {
+    const amt = parseAmount(checkAmount);
+    if (!amt || amt <= 0) {
+      toast({ title: 'Enter a valid amount', status: 'warning', duration: 2000 });
+      return;
+    }
+    // 1. Create income movement
+    const { error: incomeError } = await supabase.from('movements').insert([{
+      type: 'income',
+      amount: amt,
+      category: 'Paycheck',
+      currency: checkCurrency,
+      date: todayStr(),
+      username: user.name,
+      auto: true
+    }]);
+    if (incomeError) {
+      toast({ title: 'Error saving paycheck', description: incomeError.message, status: 'error' });
+      return;
+    }
+    // 2. Create deduction movements
+    for (const ded of paycheckDeductions) {
+      if (ded.type === 'savings' && ded.assignGoals && ded.assignGoals.length > 0) {
+        // Split savings among selected goals
+        const splitAmount = Math.floor(Number(ded.amount) / ded.assignGoals.length);
+        for (let i = 0; i < ded.assignGoals.length; i++) {
+          const goal = goals.find(g => g.id === ded.assignGoals[i]);
+          if (!goal) continue;
+          await supabase.from('movements').insert([{
+            type: 'savings',
+            amount: splitAmount,
+            category: `Saving for ${goal.name}`,
+            currency: ded.currency,
+            date: todayStr(),
+            username: user.name,
+            auto: true
+          }]);
+        }
+      } else if (ded.type !== 'savings') {
+        await supabase.from('movements').insert([{
+          type: ded.type,
+          amount: ded.amount,
+          category: ded.name,
+          currency: ded.currency,
+          date: todayStr(),
+          username: user.name,
+          auto: true
+        }]);
+      }
+    }
+    setLastCheck({ amount: amt, currency: checkCurrency });
+    setShowCheckModal(false);
+    setCheckAmount('');
+    // Refresh movements
+    const { data } = await supabase.from('movements').select('*');
+    if (data) {
+      const gabbyMovs = data.filter(m => m.username === "Gabby");
+      const jorgieMovs = data.filter(m => m.username === "Jorgie");
+      setMovements([gabbyMovs, jorgieMovs]);
+    }
+    toast({ title: 'Paycheck and deductions saved', status: 'success', duration: 2000 });
+  }
+
+  // --- Fixed Expense Modal Handlers ---
+  function openNewFixedExpense() {
+    setEditingFixedExpense(null);
+    setFixedExpenseForm({
+      name: "",
+      amount: "",
+      currency: "USD",
+      frequency: "monthly",
+      period: "",
+      type: "expense",
+      active: true
+    });
+    setShowFixedExpenseModal(true);
+  }
+
+  function openEditFixedExpense(expense) {
+    setEditingFixedExpense(expense);
+    setFixedExpenseForm({ ...expense });
+    setShowFixedExpenseModal(true);
+  }
+
+  function handleFixedExpenseFormChange(e) {
+    const { name, value, type, checked } = e.target;
+    setFixedExpenseForm(f => ({
+      ...f,
+      [name]: type === "checkbox" ? checked : value
+    }));
+  }
+
+  async function handleSaveFixedExpense() {
+    if (!fixedExpenseForm.name || !fixedExpenseForm.amount) {
+      toast({ title: "Name and amount are required", status: "warning" });
+      return;
+    }
+    if (editingFixedExpense) {
+      await supabase.from('fixed_expenses').update(fixedExpenseForm).eq('id', editingFixedExpense.id);
+    } else {
+      await supabase.from('fixed_expenses').insert([fixedExpenseForm]);
+    }
+    setShowFixedExpenseModal(false);
+    // Refresh list
+    const { data } = await supabase.from('fixed_expenses').select('*').eq('active', true);
+    setFixedExpenses(data || []);
+  }
+
+  async function handleDeleteFixedExpense() {
+    if (expenseToDelete) {
+      await supabase.from('fixed_expenses').delete().eq('id', expenseToDelete.id);
+      setShowDeleteConfirm(false);
+      setExpenseToDelete(null);
+      // Refresh list
+      const { data } = await supabase.from('fixed_expenses').select('*').eq('active', true);
+      setFixedExpenses(data || []);
+      toast({ title: 'Fixed expense deleted', status: 'info' });
+    }
+  }
+
+  // When opening the Add Paycheck modal, initialize deductions from active fixed expenses
+  function openPaycheckModal() {
+    // Map fixed expenses to editable deductions for this paycheck
+    const deductions = fixedExpenses.filter(e => e.active).map(e => ({
+      id: e.id,
+      name: e.name,
+      type: e.type,
+      amount: e.amount,
+      currency: e.currency,
+      assignGoals: [], // for savings
+    }));
+    setPaycheckDeductions(deductions);
+    setShowCheckModal(true);
+  }
+
+  function handleDeductionAmountChange(id, value) {
+    setPaycheckDeductions(deds => deds.map(d => d.id === id ? { ...d, amount: value } : d));
+  }
+
+  function handleDeductionGoalChange(id, selectedGoalIds) {
+    setPaycheckDeductions(deds => deds.map(d => d.id === id ? { ...d, assignGoals: selectedGoalIds } : d));
+  }
+
+  // --- Category Totals for Movements List by Month ---
+  // Group all types (income, expenses, savings, debts) by category for the selected month
+  const categoryTotals = React.useMemo(() => {
+    const monthMovements = selectedMovements;
+    const byCat = {};
+    monthMovements.forEach(m => {
+      const cat = m.category || "Other";
+      if (!byCat[cat]) {
+        byCat[cat] = {
+          category: cat,
+          type: m.type,
+          total: 0,
+          currency: m.currency,
+          movements: []
+        };
+      }
+      byCat[cat].total += convert(m.amount, m.currency, currency);
+      byCat[cat].movements.push(m);
+      // If there are mixed types in a category, prefer 'expenses' > 'income' > 'savings' > 'debts'
+      if (byCat[cat].type !== m.type) {
+        const typeOrder = { expenses: 1, income: 2, savings: 3, debts: 4 };
+        if (typeOrder[m.type] < typeOrder[byCat[cat].type]) {
+          byCat[cat].type = m.type;
+        }
+      }
+    });
+    // Sort: Wifey, Hubby first, then alphabetically
+    const sorted = Object.values(byCat).sort((a, b) => {
+      if (a.category === "Wifey") return -1;
+      if (b.category === "Wifey") return 1;
+      if (a.category === "Hubby") return -1;
+      if (b.category === "Hubby") return 1;
+      return a.category.localeCompare(b.category);
+    });
+    return sorted;
+  }, [selectedMovements, currency]);
+
+  // --- Expanded Categories State for Category Accordion ---
+  const [expandedCategories, setExpandedCategories] = useState([]);
+  const toggleCategory = (cat) => {
+    setExpandedCategories(prev =>
+      prev.includes(cat)
+        ? prev.filter(c => c !== cat)
+        : [...prev, cat]
+    );
+  };
+
+  // --- Mostrar/Ocultar lista de movimientos ---
+  const [showMovementsList, setShowMovementsList] = useState(true);
 
   // --- UI: Login ---
   if (showLogin) {
@@ -605,7 +1091,7 @@ function DashboardContent() {
                   w="100%"
                   colorScheme="primary"
                   leftIcon={<FaPlus />}
-                  onClick={handleAddMovement}
+                  onClick={() => setShowMovementModal(true)}
                   mb={3}
                   size="md"
                   fontWeight="bold"
@@ -615,71 +1101,75 @@ function DashboardContent() {
                   py={4}
                   _hover={{ bg: "primary.400" }}
                 >
-                  Add
+                  Add Movement
                 </Button>
                 <Button colorScheme="primary" size="md" mb={4} leftIcon={<FaTable />} onClick={() => setMonthSummaryOpen(true)} fontWeight="bold" boxShadow="md">
                   Month summary
                 </Button>
+                {/* Show last check entered */}
+                {lastCheck && (
+                  <Text color="primary.700" fontWeight="bold" mb={2}>
+                    Last paycheck: {formatCurrency(lastCheck.amount, lastCheck.currency)}
+                  </Text>
+                )}
                 {/* Movements List by Month */}
                 <Box mt={4} bg="white" borderRadius="md" p={3} boxShadow="sm">
                   <Flex justify="space-between" align="center" mb={2}>
                     <Text fontWeight="bold" fontSize="lg">Movements</Text>
                     <IconButton icon={<FaFileExport />} size="sm" onClick={handleExportExcel} aria-label="export" />
                   </Flex>
-                  {Object.keys(userMovementsByMonth).length === 0 && <Text color="gray.400">No movements yet.</Text>}
-                  {Object.entries(userMovementsByMonth).sort((a,b)=>b[0].localeCompare(a[0])).map(([key, movs], idx) => {
-                    const [year, month] = key.split("-");
-                    const isOpen = showMonthMovements[key];
-                    return (
-                      <Box key={key} mb={2} bg="primary.100" borderRadius="md" p={2}>
-                        <Flex align="center" justify="space-between" cursor="pointer" onClick={() => setShowMonthMovements(s => ({...s, [key]: !s[key]}))}>
-                          <HStack>
-                            <FaRegCalendarAlt color={theme.colors.primary[500]} />
-                            <Text fontWeight="bold">{MONTHS[Number(month)]} {year}</Text>
-                          </HStack>
-                          <IconButton icon={isOpen ? <FaChevronUp /> : <FaChevronDown />} size="xs" variant="ghost" aria-label="toggle month" />
-                        </Flex>
-                        {isOpen && (
-                          <Box overflowX="auto">
-                            <Table size="sm" mt={2} variant="simple" minWidth={isMobile ? "600px" : undefined}>
-                              <Thead>
-                                <Tr>
-                                  <Th w="30px"></Th>
-                                  <Th>Type</Th>
-                                  <Th>Category</Th>
-                                  <Th isNumeric>Amount</Th>
-                                  <Th>Date</Th>
-                                  <Th></Th>
+                  <Button size="xs" variant="outline" colorScheme="primary" mb={1} onClick={() => setShowMovementsList(v => !v)}>
+                    {showMovementsList ? 'Hide Movements' : 'Show Movements'}
+                  </Button>
+                  <Select value={selectedMovMonth} onChange={e => setSelectedMovMonth(e.target.value)} mb={3} size="md" borderRadius="lg" bg="primary.100" color="primary.700" fontWeight="bold">
+                    {allMonths.map(key => {
+                      const [year, month] = key.split("-");
+                      return <option key={key} value={key}>{MONTHS[Number(month)]} {year}</option>;
+                    })}
+                  </Select>
+                  {showMovementsList ? (
+                    <>
+                      {selectedMovements.length === 0 && <Text color="gray.400">No movements this month.</Text>}
+                      {selectedMovements.length > 0 && (
+                        <Box maxH="350px" overflowY="auto" pr={2}>
+                          <Table size="sm" variant="simple" minWidth={isMobile ? "600px" : undefined}>
+                            <Thead>
+                              <Tr>
+                                <Th w="30px"></Th>
+                                <Th>Type</Th>
+                                <Th>Category</Th>
+                                <Th isNumeric>Amount</Th>
+                                <Th>Date</Th>
+                                <Th></Th>
+                              </Tr>
+                            </Thead>
+                            <Tbody>
+                              {selectedMovements.map((m, i) => (
+                                <Tr key={i}>
+                                  <Td>{TYPE_EMOJIS[m.type]}</Td>
+                                  <Td>
+                                    <Badge colorScheme={
+                                      m.type === "income" ? "green" :
+                                      m.type === "expenses" ? "red" :
+                                      m.type === "savings" ? "blue" : "orange"
+                                    }>{m.type.charAt(0).toUpperCase() + m.type.slice(1)}</Badge>
+                                  </Td>
+                                  <Td>{m.category}</Td>
+                                  <Td isNumeric color={m.type === "income" || m.type === "savings" ? theme.colors.primary[700] : "red.600"}>
+                                    {(m.type === "income" || m.type === "savings" ? "+" : "-") + formatCurrency(m.amount, m.currency)}
+                                  </Td>
+                                  <Td fontSize="xs">{prettyDate(m.date)}</Td>
+                                  <Td>
+                                    <IconButton icon={<FaTrash />} size="xs" onClick={() => handleDeleteMovement(selectedMovements.indexOf(m))} aria-label="delete movement" />
+                                  </Td>
                                 </Tr>
-                              </Thead>
-                              <Tbody>
-                                {movs.map((m, i) => (
-                                  <Tr key={i}>
-                                    <Td>{TYPE_EMOJIS[m.type]}</Td>
-                                    <Td>
-                                      <Badge colorScheme={
-                                        m.type === "income" ? "green" :
-                                        m.type === "expenses" ? "red" :
-                                        m.type === "savings" ? "blue" : "orange"
-                                      }>{m.type.charAt(0).toUpperCase() + m.type.slice(1)}</Badge>
-                                    </Td>
-                                    <Td>{m.category}</Td>
-                                    <Td isNumeric color={m.type === "income" || m.type === "savings" ? theme.colors.primary[700] : "red.600"}>
-                                      {(m.type === "income" || m.type === "savings" ? "+" : "-") + formatCurrency(m.amount, m.currency)}
-                                    </Td>
-                                    <Td fontSize="xs">{prettyDate(m.date)}</Td>
-                                    <Td>
-                                      <IconButton icon={<FaTrash />} size="xs" onClick={() => handleDeleteMovement(movements[activeUser].indexOf(m))} aria-label="delete movement" />
-                                    </Td>
-                                  </Tr>
-                                ))}
-                              </Tbody>
-                            </Table>
-                          </Box>
-                        )}
-                      </Box>
-                    );
-                  })}
+                              ))}
+                            </Tbody>
+                          </Table>
+                        </Box>
+                      )}
+                    </>
+                  ) : null}
                   {/* Pie Chart */}
                   <Box mt={6} h="180px">
                     <ResponsiveContainer width="100%" height="100%">
@@ -786,6 +1276,98 @@ function DashboardContent() {
                 </ModalBody>
                 <ModalFooter bg="primary.50">
                   <Button colorScheme="primary" onClick={() => setMonthSummaryOpen(false)}>Close</Button>
+                </ModalFooter>
+              </ModalContent>
+            </Modal>
+            {/* Modal to enter paycheck/period */}
+            <Modal isOpen={showCheckModal} onClose={() => setShowCheckModal(false)} isCentered>
+              <ModalOverlay />
+              <ModalContent maxW="lg">
+                <ModalHeader>Add Movement</ModalHeader>
+                <ModalBody>
+                  <Input
+                    placeholder="Amount"
+                    type="number"
+                    value={checkAmount}
+                    onChange={e => setCheckAmount(e.target.value)}
+                    mb={3}
+                  />
+                  <Select value={checkCurrency} onChange={e => setCheckCurrency(e.target.value)} mb={3}>
+                    <option value="USD">USD</option>
+                    <option value="COP">COP</option>
+                  </Select>
+                  <Divider my={2} />
+                  <Heading size="sm" mb={2}>Movement Type</Heading>
+                  <Tabs variant="soft-rounded" colorScheme="primary" align="center" mb={4}>
+                    <TabList>
+                      <Tab onClick={() => setMovementType("income")}>Income</Tab>
+                      <Tab onClick={() => setMovementType("expenses")}>Expense</Tab>
+                      <Tab onClick={() => setMovementType("savings")}>Savings</Tab>
+                      <Tab onClick={() => setMovementType("debts")}>Debt</Tab>
+                    </TabList>
+                  </Tabs>
+                  {/* For savings and debts, show automatic deduction options */}
+                  {(movementType === "savings" || movementType === "debts") && (
+                    <Box mb={3}>
+                      <Checkbox
+                        id="autoMovement"
+                        isChecked={movementAuto}
+                        onChange={e => setMovementAuto(e.target.checked)}
+                        mb={2}
+                      >
+                        Automatically create counter movement
+                      </Checkbox>
+                      {movementAuto && (
+                        <Box mt={2}>
+                          <Input
+                            placeholder="How much is deducted from each check?"
+                            type="number"
+                            value={autoDeductAmount}
+                            onChange={e => setAutoDeductAmount(e.target.value)}
+                            mb={2}
+                          />
+                          {movementType === "debts" && (
+                            <Input
+                              placeholder="How many installments?"
+                              type="number"
+                              value={autoDeductInstallments}
+                              onChange={e => setAutoDeductInstallments(e.target.value)}
+                              mb={2}
+                            />
+                          )}
+                          {movementType === "savings" && (
+                            <Box mb={2}>
+                              <Text fontSize="sm" mb={1}>Assign savings to goal(s):</Text>
+                              <Select
+                                multiple
+                                value={autoDeductGoals}
+                                onChange={e => {
+                                  const selected = Array.from(e.target.selectedOptions, option => option.value);
+                                  setAutoDeductGoals(selected);
+                                }}
+                                size="md"
+                                bg="white"
+                                borderColor="primary.200"
+                                color="primary.700"
+                                fontWeight="bold"
+                              >
+                                {goals.map(goal => (
+                                  <option key={goal.id} value={goal.id}>{goal.name}</option>
+                                ))}
+                              </Select>
+                            </Box>
+                          )}
+                        </Box>
+                      )}
+                    </Box>
+                  )}
+                  <Text fontSize="sm" color="gray.500">You can set up automatic deductions for savings or debts here.</Text>
+                </ModalBody>
+                <ModalFooter>
+                  <Button colorScheme="primary" mr={3} onClick={handleCheckSubmit}>
+                    Save Movement
+                  </Button>
+                  <Button onClick={() => setShowCheckModal(false)}>Cancel</Button>
                 </ModalFooter>
               </ModalContent>
             </Modal>
@@ -990,76 +1572,181 @@ function DashboardContent() {
       </Tabs>
 
       {/* Modal Add Movement */}
-      <Modal isOpen={movementModal} onClose={() => setMovementModal(false)} size="md" isCentered>
+      <Modal isOpen={showMovementModal} onClose={() => setShowMovementModal(false)} isCentered>
         <ModalOverlay />
-        <ModalContent bg="white" borderRadius="2xl" boxShadow="2xl">
-          <ModalHeader textAlign="center" color="primary.700" fontWeight="bold" fontSize="2xl" pb={0}>
+        <ModalContent maxW="lg" bg="primary.50" borderRadius="2xl" boxShadow="2xl">
+          <ModalHeader textAlign="center" color="primary.700" fontWeight="bold" fontSize="xl" pb={0}>
             Add Movement
           </ModalHeader>
-          <ModalBody>
-            <Tabs variant="soft-rounded" colorScheme="primary" align="center" mb={4}>
-              <TabList>
-                <Tab onClick={() => setMovementType("income")}>Income</Tab>
-                <Tab onClick={() => setMovementType("expenses")}>Expense</Tab>
-                <Tab onClick={() => setMovementType("savings")}>Savings</Tab>
-                <Tab onClick={() => setMovementType("debts")}>Debt</Tab>
+          <ModalBody pt={4} pb={2} px={6}>
+            {/* Movement Type label uniform, smaller and normal weight */}
+            <Text fontWeight="normal" fontSize="md" color="primary.700" mb={3}>Movement Type</Text>
+            <Tabs variant="soft-rounded" colorScheme="primary" align="center" mb={5} index={
+              movementType === "income" ? 0 :
+              movementType === "expenses" ? 1 :
+              movementType === "savings" ? 2 : 3
+            } onChange={i => setMovementType(["income", "expenses", "savings", "debts"][i])}>
+              <TabList justifyContent="center">
+                <Tab _selected={{ bg: 'primary.400', color: 'white', fontWeight: 'normal', boxShadow: 'md' }} px={4} py={1} borderRadius="lg" fontWeight="normal" fontSize="md">Income</Tab>
+                <Tab _selected={{ bg: 'primary.400', color: 'white', fontWeight: 'normal', boxShadow: 'md' }} px={4} py={1} borderRadius="lg" fontWeight="normal" fontSize="md">Expense</Tab>
+                <Tab _selected={{ bg: 'primary.400', color: 'white', fontWeight: 'normal', boxShadow: 'md' }} px={4} py={1} borderRadius="lg" fontWeight="normal" fontSize="md">Savings</Tab>
+                <Tab _selected={{ bg: 'primary.400', color: 'white', fontWeight: 'normal', boxShadow: 'md' }} px={4} py={1} borderRadius="lg" fontWeight="normal" fontSize="md">Debt</Tab>
               </TabList>
             </Tabs>
-            <HStack mb={3}>
-              <Input
-                placeholder={`Amount`}
-                type="number"
-                value={movementAmount}
-                onChange={e => setMovementAmount(e.target.value.replace(/[^\d]/g, ''))}
-                maxLength={undefined}
-                fontSize="lg"
-                fontWeight="bold"
-              />
-              <Select value={movementCurrency} onChange={e => setMovementCurrency(e.target.value)} width="90px">
-                <option value="USD">USD</option>
-                <option value="COP">COP</option>
-              </Select>
-            </HStack>
-            {(movementType === "expenses" || movementType === "debts") && (
-              <Select mb={3} placeholder="Category" value={movementCategory} onChange={e => setMovementCategory(e.target.value)}>
-                {CATEGORIES.map(cat => <option key={cat} value={cat}>{cat}</option>)}
-              </Select>
-            )}
-            {(movementType === "income" || movementType === "savings") && (
-              <Select mb={3} placeholder="Source" value={movementSource} onChange={e => setMovementSource(e.target.value)}>
-                {INCOME_SOURCES.map(src => <option key={src} value={src}>{src}</option>)}
-              </Select>
-            )}
-            {movementType === "savings" && (
-              <Select
-                mb={3}
-                placeholder="Select Goal (optional)"
-                value={movementCategory}
-                onChange={e => setMovementCategory(e.target.value)}
-              >
-                {goals.map((g, i) => (
-                  <option key={g.name} value={`Saving for ${g.name}`}>{g.name}</option>
-                ))}
-                <option value="">Other/General Savings</option>
-              </Select>
-            )}
-            {(movementType === "savings" || movementType === "debts") && (
-              <Box mt={2}>
-                <input
-                  type="checkbox"
-                  id="autoMovement"
-                  checked={movementAuto}
-                  onChange={e => setMovementAuto(e.target.checked)}
-                />
-                <label htmlFor="autoMovement" style={{ marginLeft: '0.5em' }}>Automatically create counter movement</label>
+            <Input
+              placeholder="Amount"
+              type="number"
+              value={movementAmount}
+              onChange={e => setMovementAmount(e.target.value)}
+              mb={4}
+              size="md"
+              borderRadius="lg"
+              bg="white"
+              borderColor="primary.200"
+              color="primary.700"
+              fontWeight="normal"
+              fontSize="md"
+              _placeholder={{ color: 'primary.300' }}
+            />
+            <Select value={movementCurrency} onChange={e => setMovementCurrency(e.target.value)} mb={4} size="md" borderRadius="lg" bg="white" borderColor="primary.200" color="primary.700" fontWeight="normal" fontSize="md">
+              <option value="USD">USD</option>
+              <option value="COP">COP</option>
+            </Select>
+            <Divider my={2} />
+            {/* Fields by type */}
+            {movementType === "income" && (
+              <Box mb={4}>
+                <Select value={movementSource} onChange={e => setMovementSource(e.target.value)} mb={2} size="md" borderRadius="lg" bg="white" borderColor="primary.200" color="primary.700" fontWeight="normal" fontSize="md">
+                  {INCOME_SOURCES.map(src => <option key={src} value={src}>{src}</option>)}
+                </Select>
               </Box>
             )}
+            {movementType === "expenses" && (
+              <Box mb={4}>
+                <Select value={movementCategory} onChange={e => setMovementCategory(e.target.value)} mb={2} size="md" borderRadius="lg" bg="white" borderColor="primary.200" color="primary.700" fontWeight="normal" fontSize="md">
+                  <option value="">Select category</option>
+                  {CATEGORIES.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                </Select>
+              </Box>
+            )}
+            {movementType === "savings" && (
+              <Box mb={4}>
+                <Select value={movementSource} onChange={e => setMovementSource(e.target.value)} mb={2} size="md" borderRadius="lg" bg="white" borderColor="primary.200" color="primary.700" fontWeight="normal" fontSize="md">
+                  {INCOME_SOURCES.map(src => <option key={src} value={src}>{src}</option>)}
+                </Select>
+              </Box>
+            )}
+            {movementType === "debts" && (
+              <Box mb={4}>
+                <Select value={movementCategory} onChange={e => setMovementCategory(e.target.value)} mb={2} size="md" borderRadius="lg" bg="white" borderColor="primary.200" color="primary.700" fontWeight="normal" fontSize="md">
+                  <option value="">Select category</option>
+                  {CATEGORIES.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                </Select>
+              </Box>
+            )}
+            {/* Automatic counter movement for savings and debts */}
+            {(movementType === "savings" || movementType === "debts") && (
+              <Box mb={4} bg="primary.100" borderRadius="lg" p={3}>
+                <Checkbox
+                  id="autoMovement"
+                  isChecked={movementAuto}
+                  onChange={e => setMovementAuto(e.target.checked)}
+                  mb={2}
+                  colorScheme="primary"
+                  size="md"
+                  fontWeight="normal"
+                  fontSize="md"
+                >
+                  Automatically create counter movement
+                </Checkbox>
+                {movementAuto && (
+                  <Box mt={2}>
+                    <Input
+                      placeholder="How much is deducted from each check?"
+                      type="number"
+                      value={autoDeductAmount}
+                      onChange={e => setAutoDeductAmount(e.target.value)}
+                      mb={2}
+                      size="md"
+                      borderRadius="lg"
+                      bg="white"
+                      borderColor="primary.200"
+                      color="primary.700"
+                      fontWeight="normal"
+                      fontSize="md"
+                    />
+                    <Select value={autoDeductCheck} onChange={e => setAutoDeductCheck(e.target.value)} mb={2} size="md" borderRadius="lg" bg="white" borderColor="primary.200" color="primary.700" fontWeight="normal" fontSize="md">
+                      {INCOME_SOURCES.map(src => <option key={src} value={src}>{src}</option>)}
+                    </Select>
+                    {movementType === "debts" && movementAuto && (
+                      <>
+                        <Input
+                          placeholder="How many installments?"
+                          type="number"
+                          value={autoDeductInstallments}
+                          onChange={e => setAutoDeductInstallments(e.target.value)}
+                          mb={2}
+                          size="md"
+                          borderRadius="lg"
+                          bg="white"
+                          borderColor="primary.200"
+                          color="primary.700"
+                          fontWeight="normal"
+                          fontSize="md"
+                        />
+                        <Box mb={2}>
+                          <Text fontSize="md" color="primary.700" mb={1}>Frequency:</Text>
+                          <Select
+                            value={debtFrequency}
+                            onChange={e => setDebtFrequency(e.target.value)}
+                            size="md"
+                            borderRadius="lg"
+                            bg="white"
+                            borderColor="primary.200"
+                            color="primary.700"
+                            fontWeight="normal"
+                            fontSize="md"
+                            mb={2}
+                          >
+                            <option value="Monthly">Monthly</option>
+                            <option value="Biweekly">Biweekly</option>
+                          </Select>
+                        </Box>
+                      </>
+                    )}
+                    
+                    {movementType === "savings" && (
+                      <Box mb={2}>
+                        <Text fontSize="md" mb={1} color="primary.700" fontWeight="normal">Assign savings to goal:</Text>
+                        <Select
+                          value={autoDeductGoals[0] || ""}
+                          onChange={e => setAutoDeductGoals([e.target.value])}
+                          size="md"
+                          bg="white"
+                          borderColor="primary.200"
+                          color="primary.700"
+                          borderRadius="lg"
+                          fontWeight="normal"
+                          fontSize="md"
+                        >
+                          <option value="">Select goal</option>
+                          {goals.map(goal => (
+                            <option key={goal.id} value={goal.id}>{goal.name}</option>
+                          ))}
+                        </Select>
+                      </Box>
+                    )}
+                  </Box>
+                )}
+              </Box>
+            )}
+            <Text fontSize="md" color="primary.400" mt={2} mb={1} textAlign="center">You can set up automatic deductions for savings or debts here.</Text>
           </ModalBody>
           <ModalFooter bg="primary.50" borderBottomRadius="2xl">
-            <Button colorScheme="primary" mr={3} onClick={handleMovementSubmit} size="md" fontWeight="bold">
-              Add
+            <Button colorScheme="primary" mr={3} onClick={handleUnifiedMovementSubmit} size="md" fontWeight="normal" px={6} py={4} boxShadow="md" borderRadius="lg" fontSize="md">
+              Save Movement
             </Button>
-            <Button onClick={() => setMovementModal(false)} size="md">Cancel</Button>
+            <Button onClick={() => setShowMovementModal(false)} size="md" borderRadius="lg" fontSize="md" fontWeight="normal">Cancel</Button>
           </ModalFooter>
         </ModalContent>
       </Modal>
