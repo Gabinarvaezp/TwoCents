@@ -7,6 +7,7 @@ import {
 import { FaPlus, FaSync, FaSignOutAlt, FaPiggyBank, FaUsers, FaHome, FaTrash, FaFileExport, FaArrowDown, FaArrowUp, FaChevronDown, FaChevronUp, FaRegCalendarAlt, FaRegCreditCard, FaTable, FaChevronLeft, FaChevronRight } from "react-icons/fa";
 import * as XLSX from "xlsx";
 import { PieChart, Pie, Cell, Legend, Tooltip, ResponsiveContainer, BarChart, XAxis, YAxis, Bar } from "recharts";
+import { supabase } from "./supabaseClient";
 
 // --- Custom Theme (brown/beige/gold) ---
 const theme = extendTheme({
@@ -131,20 +132,69 @@ function DashboardContent() {
   const [currency, setCurrency] = useState(user.currency);
 
   // --- Financial State and Movements ---
-  const [movements, setMovements] = useState(() => {
-    const saved = localStorage.getItem("movements");
-    return saved ? JSON.parse(saved) : [[],[]];
-  });
+  const [movements, setMovements] = useState([[], []]);
+  // Cargar movements desde Supabase al iniciar
+  useEffect(() => {
+    async function fetchMovements() {
+      const { data, error } = await supabase.from('movements').select('*');
+      if (!error) {
+        const gabbyMovs = data.filter(m => m.user === "Gabby");
+        const jorgieMovs = data.filter(m => m.user === "Jorgie");
+        setMovements([gabbyMovs, jorgieMovs]);
+      }
+    }
+    fetchMovements();
+  }, []);
 
   // --- Goals State ---
-  const [goals, setGoals] = useState(() => {
-    const saved = localStorage.getItem("goals");
-    return saved ? JSON.parse(saved) : [{
-      name: "Cozy House",
-      target: 30000,
-      date: "2026-01-28"
-    }];
-  });
+  const [goals, setGoals] = useState([]);
+  // Cargar goals desde Supabase al iniciar
+  useEffect(() => {
+    async function fetchGoals() {
+      const { data, error } = await supabase.from('goals').select('*').order('inserted_at', { ascending: true });
+      if (error) {
+        toast({ title: 'Error loading goals', description: error.message, status: 'error' });
+      } else {
+        setGoals(data || []);
+      }
+    }
+    fetchGoals();
+  }, []);
+
+  // --- Realtime Subscriptions for goals and movements ---
+  useEffect(() => {
+    // Suscripción a cambios en 'goals'
+    const goalsSub = supabase
+      .channel('public:goals')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'goals' }, payload => {
+        // Refresca los goals al detectar cualquier cambio
+        supabase.from('goals').select('*').order('inserted_at', { ascending: true })
+          .then(({ data }) => setGoals(data || []));
+      })
+      .subscribe();
+
+    // Suscripción a cambios en 'movements'
+    const movSub = supabase
+      .channel('public:movements')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'movements' }, payload => {
+        // Refresca los movements al detectar cualquier cambio
+        supabase.from('movements').select('*').order('inserted_at', { ascending: true })
+          .then(({ data }) => {
+            // Agrupa por usuario
+            setMovements([
+              (data || []).filter(m => m.user === 'Gabby'),
+              (data || []).filter(m => m.user === 'Jorgie'),
+            ]);
+          });
+      })
+      .subscribe();
+
+    // Limpia las suscripciones al desmontar
+    return () => {
+      supabase.removeChannel(goalsSub);
+      supabase.removeChannel(movSub);
+    };
+  }, []);
 
   // --- UI States for Modals and Tabs ---
   const [goalModalOpen, setGoalModalOpen] = useState(false);
@@ -171,11 +221,6 @@ function DashboardContent() {
   // --- Responsive helpers ---
   const isMobile = useBreakpointValue({ base: true, md: false });
 
-  // --- Persistence Effects ---
-  useEffect(() => { localStorage.setItem("movements", JSON.stringify(movements)); }, [movements]);
-  useEffect(() => { localStorage.setItem("goals", JSON.stringify(goals)); }, [goals]);
-  useEffect(() => { localStorage.setItem("activeUser", activeUser); }, [activeUser]);
-
   // --- Login Handlers ---
   function handleLogin(e) {
     e.preventDefault();
@@ -201,7 +246,7 @@ function DashboardContent() {
     setMovementCurrency(user.currency);
     setMovementModal(true);
   }
-  function handleMovementSubmit() {
+  async function handleMovementSubmit() {
     const amt = parseAmount(movementAmount);
     if (!amt || amt <= 0) {
       toast({ title: "Please enter a valid amount", status: "warning", duration: 2000 });
@@ -213,38 +258,44 @@ function DashboardContent() {
       category: movementType === "savings" && movementCategory ? movementCategory : (movementType === "income" || movementType === "savings" ? movementSource : movementCategory),
       currency: movementCurrency,
       date: todayStr(),
-      auto: movementAuto
+      auto: movementAuto,
+      user: user.name
     };
-
-    setMovements(movs => {
-      const copy = [...movs];
-      if (movementType === "savings" && (movementSource === "First Check" || movementSource === "Second Check" || movementSource === "Both")) {
-        copy[activeUser] = [
-          ...copy[activeUser],
-          { ...newMov },
-          { type: "income", amount: -amt, category: movementSource, currency: movementCurrency, date: todayStr(), auto: true }
-        ];
-      } else if (movementType === "debts") {
-        copy[activeUser] = [
-          ...copy[activeUser],
-          { ...newMov },
-          { type: "income", amount: -amt, category: movementCategory, currency: movementCurrency, date: todayStr(), auto: true }
-        ];
-      } else {
-        copy[activeUser] = [...copy[activeUser], newMov];
-      }
-      return copy;
-    });
+    // Si savings/debts con contramovimiento, inserta ambos
+    let toInsert = [newMov];
+    if (movementType === "savings" && (movementSource === "First Check" || movementSource === "Second Check" || movementSource === "Both")) {
+      toInsert.push({ type: "income", amount: -amt, category: movementSource, currency: movementCurrency, date: todayStr(), auto: true, user: user.name });
+    } else if (movementType === "debts") {
+      toInsert.push({ type: "income", amount: -amt, category: movementCategory, currency: movementCurrency, date: todayStr(), auto: true, user: user.name });
+    }
+    const { error } = await supabase.from('movements').insert(toInsert);
+    if (error) {
+      toast({ title: "Error saving movement", description: error.message, status: "error" });
+      return;
+    }
     setMovementModal(false);
     toast({ title: "Movement added", status: "success", duration: 1500 });
+    // Refresca movimientos
+    const { data } = await supabase.from('movements').select('*');
+    if (data) {
+      const gabbyMovs = data.filter(m => m.user === "Gabby");
+      const jorgieMovs = data.filter(m => m.user === "Jorgie");
+      setMovements([gabbyMovs, jorgieMovs]);
+    }
   }
-  function handleDeleteMovement(idx) {
-    setMovements(movs => {
-      const copy = [...movs];
-      copy[activeUser] = copy[activeUser].filter((_, i) => i !== idx);
-      return copy;
-    });
-    toast({ title: "Movement deleted", status: "info", duration: 1500 });
+  async function handleDeleteMovement(idx) {
+    const mov = movements[activeUser][idx];
+    const { error } = await supabase.from('movements').delete().eq('id', mov.id);
+    if (error) {
+      toast({ title: 'Error deleting movement', description: error.message, status: 'error' });
+    } else {
+      setMovements(movs => {
+        const copy = [...movs];
+        copy[activeUser] = copy[activeUser].filter((_, i) => i !== idx);
+        return copy;
+      });
+      toast({ title: "Movement deleted", status: "info", duration: 1500 });
+    }
   }
 
   // --- Export Function ---
@@ -290,21 +341,46 @@ function DashboardContent() {
     setEditGoalIndex(idx);
     setGoalModalOpen(true);
   }
-  function handleDeleteGoal(idx) {
-    setGoals(goals => goals.filter((_, i) => i !== idx));
-    toast({ title: "Goal deleted", status: "info", duration: 2000 });
+  async function handleDeleteGoal(idx) {
+    const goal = goals[idx];
+    const { error } = await supabase.from('goals').delete().eq('id', goal.id);
+    if (error) {
+      toast({ title: 'Error deleting goal', description: error.message, status: 'error' });
+    } else {
+      // Refresca goals desde Supabase
+      const { data } = await supabase.from('goals').select('*').order('inserted_at', { ascending: true });
+      setGoals(data || []);
+      toast({ title: "Goal deleted", status: "info", duration: 2000 });
+    }
   }
-  function handleGoalSubmit() {
+  async function handleGoalSubmit() {
     if (!goalForm.name || !goalForm.target) {
       toast({ title: "Name and target required", status: "warning", duration: 2000 });
       return;
     }
     if (editGoalIndex !== null) {
-      setGoals(goals => goals.map((g, i) => i === editGoalIndex ? goalForm : g));
-      toast({ title: "Goal updated", status: "success", duration: 2000 });
+      // Update
+      const goal = goals[editGoalIndex];
+      const { error } = await supabase.from('goals').update({ ...goalForm }).eq('id', goal.id);
+      if (error) {
+        toast({ title: 'Error updating goal', description: error.message, status: 'error' });
+      } else {
+        // Refresca goals desde Supabase
+        const { data } = await supabase.from('goals').select('*').order('inserted_at', { ascending: true });
+        setGoals(data || []);
+        toast({ title: "Goal updated", status: "success", duration: 2000 });
+      }
     } else {
-      setGoals(goals => [...goals, goalForm]);
-      toast({ title: "Goal added", status: "success", duration: 2000 });
+      // Insert
+      const { error } = await supabase.from('goals').insert([{ ...goalForm, created_by: users[activeUser].name }]);
+      if (error) {
+        toast({ title: 'Error adding goal', description: error.message, status: 'error' });
+      } else {
+        // Refresca goals desde Supabase
+        const { data } = await supabase.from('goals').select('*').order('inserted_at', { ascending: true });
+        setGoals(data || []);
+        toast({ title: "Goal added", status: "success", duration: 2000 });
+      }
     }
     setGoalModalOpen(false);
   }
