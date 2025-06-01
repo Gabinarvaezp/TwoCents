@@ -228,6 +228,7 @@ function DashboardContent() {
   const [autoDeductInstallments, setAutoDeductInstallments] = useState("");
   const [autoDeductCheck, setAutoDeductCheck] = useState("First Check");
   const [autoDeductGoals, setAutoDeductGoals] = useState([]);
+  const [debtFrequency, setDebtFrequency] = useState("Monthly");
 
   const [tab, setTab] = useState(0);
   const [monthSummaryOpen, setMonthSummaryOpen] = useState(false);
@@ -470,10 +471,9 @@ function DashboardContent() {
         // Guarda como fixed_expense para automatización futura
         await supabase.from('fixed_expenses').insert([{
           name: 'Automatic Savings',
-          amount: autoAmt,
+          amount: Number(autoAmt),
           currency: movementCurrency,
           frequency: 'monthly',
-          period: '',
           username: user.name,
           type: 'savings',
           active: true
@@ -558,12 +558,11 @@ function DashboardContent() {
         }
         // Guarda como fixed_expense para automatización futura
         await supabase.from('fixed_expenses').insert([{
-          name: movementCategory,
-          amount: autoAmt,
-          currency: movementCurrency,
-          frequency: autoDeductCheck.toLowerCase(),
-          period: '',
-          username: user.name,
+          name: String(movementCategory),
+          amount: Number(autoAmt),
+          currency: String(movementCurrency),
+          frequency: autoDeductCheck ? String(autoDeductCheck).toLowerCase() : 'monthly',
+          username: user && user.name ? String(user.name) : '',
           type: 'debt',
           active: true
         }]);
