@@ -985,6 +985,25 @@ function DashboardContent() {
   // --- Mostrar/Ocultar lista de movimientos ---
   const [showMovementsList, setShowMovementsList] = useState(true);
 
+  // --- Eliminar movimiento por índice en selectedMovements ---
+  async function handleDeleteMovement(idx) {
+    const m = selectedMovements[idx];
+    if (!m) return;
+    const { error } = await supabase.from('movements').delete().eq('id', m.id);
+    if (error) {
+      toast({ title: 'Error deleting movement', description: error.message, status: 'error' });
+      return;
+    }
+    // Refresca movimientos
+    const { data } = await supabase.from('movements').select('*');
+    if (data) {
+      const gabbyMovs = data.filter(m => m.username === "Gabby");
+      const jorgieMovs = data.filter(m => m.username === "Jorgie");
+      setMovements([gabbyMovs, jorgieMovs]);
+    }
+    toast({ title: 'Movement deleted', status: 'info', duration: 1500 });
+  }
+
   // --- UI: Login ---
   if (showLogin) {
     return (
