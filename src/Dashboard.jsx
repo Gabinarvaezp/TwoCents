@@ -56,7 +56,7 @@ const users = [
 ];
 const COP_TO_USD = 4500;
 const CATEGORIES = [
-  "Wifey", "Hubby", "Food", "Golf", "Car Wash", "Travel", "Family", "Public Transport", "Housing", "Beer", "Snacks", "Health", "Entertainment/Friends", "Shopping", "Other"
+  "Wifey", "Hubby", "Food", "Cooper", "Golf", "Car Wash", "Travel", "Family", "Public Transport", "Housing", "Beer", "Snacks", "Health", "Entertainment/Friends", "Shopping", "Other"
 ];
 const INCOME_SOURCES = ["First Check", "Second Check", "Both", "Other"];
 const PASTEL_COLORS = [theme.colors.gabby[500], theme.colors.jorgie[500], "#B5EAD7", "#FFDAC1", "#C7CEEA", "#F3B0C3", "#B5B9FF", "#FFD6E0"];
@@ -480,10 +480,11 @@ function DashboardContent() {
         }]);
       } else {
         // Savings normal
+        const category = movementCategory || movementSource;
         const { error } = await supabase.from('movements').insert([{
           type: 'savings',
           amount: amt,
-          category: movementSource,
+          category,
           currency: movementCurrency,
           date: todayStr(),
           username: user.name,
@@ -567,7 +568,7 @@ function DashboardContent() {
           active: true
         }]);
       } else {
-        // Debt normal
+        // Debt normal (solo el mes actual)
         const { error } = await supabase.from('movements').insert([{
           type: 'debts',
           amount: amt,
@@ -698,20 +699,43 @@ function DashboardContent() {
     });
     return { income, expenses, savings, debts, balance: income - expenses - debts };
   }
-  const summary = getSummary(movements[activeUser], currency);
+  // Solo mostrar el resumen del mes actual
+  const nowSummaryMonth = new Date().getMonth();
+  const nowSummaryYear = new Date().getFullYear();
+  const summary = getSummary(movements[activeUser], currency, nowSummaryMonth, nowSummaryYear);
 
   // --- Together Summary Calculation ---
+  // Filtrado robusto para Together: normaliza username y fecha
+  function getUserMovements(movs, username) {
+    return movs.filter(m => (m.username || '').toLowerCase() === username.toLowerCase());
+  }
+  // Obtén movimientos de Gabby y Jorgie robustamente
+  const gabbyMovs = getUserMovements([].concat(...movements), 'Gabby');
+  const jorgieMovs = getUserMovements([].concat(...movements), 'Jorgie');
+  // Solo del mes actual
+  function filterByMonth(movs, month, year) {
+    return movs.filter(m => {
+      if (!m.date) return false;
+      const d = new Date(m.date);
+      return d.getMonth() === month && d.getFullYear() === year;
+    });
+  }
+  const gabbyMovsMonth = filterByMonth(gabbyMovs, nowSummaryMonth, nowSummaryYear);
+  const jorgieMovsMonth = filterByMonth(jorgieMovs, nowSummaryMonth, nowSummaryYear);
+  // Suma por tipo
+  function sumByType(movs, type) {
+    return movs.filter(m => m.type === type).reduce((acc, m) => acc + convert(m.amount, m.currency, currency), 0);
+  }
   const togetherSummary = {
-    income: 0, expenses: 0, savings: 0, debts: 0, balance: 0
+    income: sumByType(gabbyMovsMonth, 'income') + sumByType(jorgieMovsMonth, 'income'),
+    expenses: sumByType(gabbyMovsMonth, 'expenses') + sumByType(jorgieMovsMonth, 'expenses'),
+    savings: sumByType(gabbyMovsMonth, 'savings') + sumByType(jorgieMovsMonth, 'savings'),
+    debts: sumByType(gabbyMovsMonth, 'debts') + sumByType(jorgieMovsMonth, 'debts'),
+    balance:
+      (sumByType(gabbyMovsMonth, 'income') + sumByType(jorgieMovsMonth, 'income'))
+      - (sumByType(gabbyMovsMonth, 'expenses') + sumByType(jorgieMovsMonth, 'expenses'))
+      - (sumByType(gabbyMovsMonth, 'debts') + sumByType(jorgieMovsMonth, 'debts'))
   };
-  [0, 1].forEach(idx => {
-    const s = getSummary(movements[idx], currency);
-    togetherSummary.income += s.income;
-    togetherSummary.expenses += s.expenses;
-    togetherSummary.savings += s.savings;
-    togetherSummary.debts += s.debts;
-    togetherSummary.balance += s.balance;
-  });
 
   // --- Pie Chart Data (Current Month) ---
   
@@ -724,21 +748,26 @@ function DashboardContent() {
     { name: "Debts", value: getSummary(movements[activeUser], currency, currentMonth, currentYear).debts }
   ].filter(item => item.value !== 0);
   const pieDataTogether = [
-    { name: `${users[0].label} Income`, value: getSummary(movements[0], currency, currentMonth, currentYear).income, color: users[0].chartColor },
-    { name: `${users[1].label} Income`, value: getSummary(movements[1], currency, currentMonth, currentYear).income, color: users[1].chartColor },
-    { name: `${users[0].label} Expenses`, value: getSummary(movements[0], currency, currentMonth, currentYear).expenses, color: users[0].chartColor },
-    { name: `${users[1].label} Expenses`, value: getSummary(movements[1], currency, currentMonth, currentYear).expenses, color: users[1].chartColor },
-    { name: `${users[0].label} Savings`, value: getSummary(movements[0], currency, currentMonth, currentYear).savings, color: users[0].chartColor },
-    { name: `${users[1].label} Savings`, value: getSummary(movements[1], currency, currentMonth, currentYear).savings, color: users[1].chartColor },
-    { name: `${users[0].label} Debts`, value: getSummary(movements[0], currency, currentMonth, currentYear).debts, color: users[0].chartColor },
-    { name: `${users[1].label} Debts`, value: getSummary(movements[1], currency, currentMonth, currentYear).debts, color: users[1].chartColor }
+    { name: `${users[0].label} Income`, value: sumByType(gabbyMovsMonth, 'income'), color: users[0].chartColor },
+    { name: `${users[1].label} Income`, value: sumByType(jorgieMovsMonth, 'income'), color: users[1].chartColor },
+    { name: `${users[0].label} Expenses`, value: sumByType(gabbyMovsMonth, 'expenses'), color: users[0].chartColor },
+    { name: `${users[1].label} Expenses`, value: sumByType(jorgieMovsMonth, 'expenses'), color: users[1].chartColor },
+    { name: `${users[0].label} Savings`, value: sumByType(gabbyMovsMonth, 'savings'), color: users[0].chartColor },
+    { name: `${users[1].label} Savings`, value: sumByType(jorgieMovsMonth, 'savings'), color: users[1].chartColor },
+    { name: `${users[0].label} Debts`, value: sumByType(gabbyMovsMonth, 'debts'), color: users[0].chartColor },
+    { name: `${users[1].label} Debts`, value: sumByType(jorgieMovsMonth, 'debts'), color: users[1].chartColor }
   ].filter(item => item.value !== 0);
 
   // --- Movements by Month ---
   function getMovementsByMonth(movs) {
     const byMonth = {};
     movs.forEach(m => {
-      const key = `${getYear(m.date)}-${String(getMonthIndex(m.date)).padStart(2, "0")}`;
+      // Normaliza username y parsea fecha robustamente
+      if (!m.date || !m.username) return;
+      const userNorm = (m.username || '').toLowerCase();
+      const keyDate = new Date(m.date);
+      if (isNaN(keyDate)) return;
+      const key = `${keyDate.getFullYear()}-${String(keyDate.getMonth()).padStart(2, "0")}`;
       if (!byMonth[key]) byMonth[key] = [];
       byMonth[key].push(m);
     });
@@ -1190,25 +1219,29 @@ function DashboardContent() {
                   ) : null}
                   {/* Pie Chart */}
                   <Box mt={6} h="180px">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                        <Pie
-                          data={pieData}
-                          dataKey="value"
-                          nameKey="name"
-                          cx="50%"
-                          cy="50%"
-                          outerRadius={60}
-                          fill={theme.colors.primary[400]}
-                          label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-                        >
-                          {pieData.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={PASTEL_COLORS[index % PASTEL_COLORS.length]} />
-                          ))}
-                        </Pie>
-                        <Tooltip />
-                      </PieChart>
-                    </ResponsiveContainer>
+                    {pieData.length > 0 ? (
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie
+                            data={pieData}
+                            dataKey="value"
+                            nameKey="name"
+                            cx="50%"
+                            cy="50%"
+                            outerRadius={60}
+                            fill={theme.colors.primary[400]}
+                            label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                          >
+                            {pieData.map((entry, index) => (
+                              <Cell key={`cell-${index}`} fill={PASTEL_COLORS[index % PASTEL_COLORS.length]} />
+                            ))}
+                          </Pie>
+                          <Tooltip />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    ) : (
+                      <Flex align="center" justify="center" h="100%"><Text color="gray.400">No data for this month</Text></Flex>
+                    )}
                   </Box>
                 </Box>
               </Box>
@@ -1651,6 +1684,24 @@ function DashboardContent() {
               <Box mb={4}>
                 <Select value={movementSource} onChange={e => setMovementSource(e.target.value)} mb={2} size="md" borderRadius="lg" bg="white" borderColor="primary.200" color="primary.700" fontWeight="normal" fontSize="md">
                   {INCOME_SOURCES.map(src => <option key={src} value={src}>{src}</option>)}
+                </Select>
+                {/* Selector de goal para cualquier ahorro */}
+                <Select
+                  value={movementCategory}
+                  onChange={e => setMovementCategory(e.target.value)}
+                  mb={2}
+                  size="md"
+                  borderRadius="lg"
+                  bg="white"
+                  borderColor="primary.200"
+                  color="primary.700"
+                  fontWeight="normal"
+                  fontSize="md"
+                >
+                  <option value="">General Savings</option>
+                  {goals.map(goal => (
+                    <option key={goal.id} value={`Saving for ${goal.name}`}>{goal.name}</option>
+                  ))}
                 </Select>
               </Box>
             )}
