@@ -1,8 +1,8 @@
 Our goals/
-├── node_modules/
-├── public/
-├── src/
-├── .gitignore   <--- AQUÍ
-├── package.json
-├── README.md
-└── ...otros archivos
+├node_modules/
+.cache/
+dist/
+build/
+.env
+.DS_Store
+*.log
