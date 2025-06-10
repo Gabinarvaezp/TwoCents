@@ -1,76 +1,75 @@
 import React, { useState, useEffect } from "react";
 import {
-  Box, Flex, Avatar, Text, Button, HStack, VStack, Divider, IconButton, useToast,
-  Modal, ModalOverlay, ModalContent, ModalHeader, ModalBody, ModalFooter, Input, Tabs, TabList, TabPanels, Tab, TabPanel, Heading, Progress, SimpleGrid, Badge, Select, Table, Thead, Tbody, Tr, Th, Td,
-  extendTheme, ChakraProvider, useBreakpointValue, Checkbox
+  Box, Flex, Avatar, Text, Button, HStack, VStack, IconButton, useToast,
+  Modal, ModalOverlay, ModalContent, ModalHeader, ModalBody, ModalFooter, Input, Tabs, TabList, TabPanels, Tab, TabPanel, Heading, SimpleGrid, Badge, Select, Table, Thead, Tbody, Tr, Th, Td, Checkbox,
+  extendTheme, ChakraProvider, useBreakpointValue
 } from "@chakra-ui/react";
-import { FaPlus, FaSync, FaSignOutAlt, FaPiggyBank, FaUsers, FaHome, FaTrash, FaFileExport, FaArrowDown, FaArrowUp, FaChevronDown, FaChevronUp, FaRegCalendarAlt, FaRegCreditCard, FaTable, FaChevronLeft, FaChevronRight } from "react-icons/fa";
+import { FaPlus, FaSync, FaSignOutAlt, FaPiggyBank, FaUsers, FaHome, FaTrash, FaFileExport, FaTable, FaEdit } from "react-icons/fa";
 import * as XLSX from "xlsx";
-import { PieChart, Pie, Cell, Legend, Tooltip, ResponsiveContainer, BarChart, XAxis, YAxis, Bar } from "recharts";
-import { supabase } from "./supabaseClient";
+import { createClient } from '@supabase/supabase-js';
+import {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  Legend
+} from "recharts";
 
-// --- Custom Theme (brown/beige/gold) ---
+// --- SUPABASE ---
+const supabaseUrl = 'https://ytdmnorypknxuabcfkwm.supabase.co';
+const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl0ZG1ub3J5cGtueHVhYmNma3dtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDg3MzI3NDgsImV4cCI6MjA2NDMwODc0OH0.pystL1X4_9lSr2ROSarunDlWAwPhUF_dg6cJhHI6df8';
+const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
+// --- THEME AND CONSTANTS ---
 const theme = extendTheme({
   colors: {
     primary: {
-      50:  "#f8f4f0",
+      50: "#f8f4f0",
       100: "#f1e6dd",
       200: "#e2cfc3",
       300: "#cbb49e",
       400: "#b89a7a",
-      500: "#a67c52",   // Main brown-gold
+      500: "#a67c52",
       600: "#8c6844",
       700: "#6e5235",
       800: "#4d3923",
       900: "#2e1e12",
     },
     gabby: {
-      400: "#e48ab6", // Pink
+      400: "#e48ab6",
       500: "#f7b6d2"
     },
     jorgie: {
-      400: "#4a90e2", // Blue
+      400: "#4a90e2",
       500: "#7db7e8"
     }
   }
 });
 
-// --- User Configuration ---
 const users = [
-  {
-    name: "Gabby",
-    label: "Wifey",
-    avatar: "/wifey.jpg",
-    currency: "COP",
-    color: theme.colors.gabby[400],
-    chartColor: theme.colors.gabby[500]
-  },
-  {
-    name: "Jorgie",
-    label: "Hubby",
-    avatar: "/hubby.jpg",
-    currency: "USD",
-    color: theme.colors.jorgie[400],
-    chartColor: theme.colors.jorgie[500]
-  }
+  { name: "Gabby", label: "Wifey", avatar: "/wifey.jpg", currency: "COP", color: theme.colors.gabby[400], chartColor: theme.colors.gabby[500] },
+  { name: "Jorgie", label: "Hubby", avatar: "/hubby.jpg", currency: "USD", color: theme.colors.jorgie[400], chartColor: theme.colors.jorgie[500] }
 ];
 const COP_TO_USD = 4500;
 const CATEGORIES = [
-  "Wifey", "Hubby", "Food", "Cooper", "Golf", "Car Wash", "Travel", "Family", "Public Transport", "Housing", "Beer", "Snacks", "Health", "Entertainment/Friends", "Shopping", "Other"
+  "Food", "Golf", "Car Wash", "Travel", "Family", "Public Transport", "Housing", "Beer", "Snacks", "Health", "Entertainment/Friends", "Shopping", "Other"
 ];
 const INCOME_SOURCES = ["First Check", "Second Check", "Both", "Other"];
-const PASTEL_COLORS = [theme.colors.gabby[500], theme.colors.jorgie[500], "#B5EAD7", "#FFDAC1", "#C7CEEA", "#F3B0C3", "#B5B9FF", "#FFD6E0"];
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+const TYPE_EMOJIS = { income: "💸", expenses: "🛒", savings: "🏦", debts: "💳" };
 
 function formatCurrency(amount, currency) {
-  if (currency === "COP") return "COL$" + Number(amount).toLocaleString("es-CO", { maximumFractionDigits: 0 });
+  if (currency === "COP") return "COL$" + Number(amount).toLocaleString("en-US", { maximumFractionDigits: 0 });
   return "$" + Number(amount).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 function todayStr() {
   const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 }
 function prettyDate(str) {
+  if (!str) return "-";
   const d = new Date(str);
   return d.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
 }
@@ -79,298 +78,151 @@ function parseAmount(str) {
   return Number(str.replace(/,/g, ".").replace(/[^0-9.]/g, ""));
 }
 function convert(amount, from, to) {
+  if (!amount) return 0;
   if (from === to) return amount;
   if (from === "USD" && to === "COP") return amount * COP_TO_USD;
   if (from === "COP" && to === "USD") return amount / COP_TO_USD;
   return amount;
 }
 function getMonthIndex(dateStr) {
-  const d = new Date(dateStr);
-  return d.getMonth();
+  const d = new Date(dateStr + "T00:00:00Z");
+  return d.getUTCMonth();
 }
 function getYear(dateStr) {
-  return new Date(dateStr).getFullYear();
+  const d = new Date(dateStr + "T00:00:00Z");
+  return d.getUTCFullYear();
 }
 
-const MOTIVATIONALS = [
-  "Track your progress.",
-  "Stay consistent.",
-  "Every step matters.",
-  "Keep it simple.",
-  "Small wins add up.",
-  "Stay on track.",
-  "Plan. Save. Grow.",
-  "Your goals, your pace.",
-  "Progress, not perfection.",
-  "Build your future."
-];
-
-function getMotivational() {
-  return MOTIVATIONALS[Math.floor(Math.random() * MOTIVATIONALS.length)];
-}
-
-const TYPE_EMOJIS = {
-  income: "💸",
-  expenses: "🛒",
-  savings: "🏦",
-  debts: "💳"
-};
-
-function FixedExpensesSummary({ fixedExpenses, periodLabel }) {
-  const filtered = fixedExpenses.filter(e => !e.period || e.period === periodLabel);
-  const total = filtered.reduce((sum, e) => sum + Number(e.amount), 0);
+// --- GOAL MODAL ---
+function GoalModal({ isOpen, onClose, goalForm, setGoalForm, handleGoalSubmit, isEditing }) {
   return (
-    <Box>
-      <Heading size="sm" mb={2}>Automatic deductions for this {periodLabel} period:</Heading>
-      <VStack align="start" spacing={1} mb={2}>
-        {filtered.map(e => (
-          <Text key={e.id}>{e.name}: {formatCurrency(e.amount, e.currency)}</Text>
-        ))}
-      </VStack>
-      <Text fontWeight="bold">Total: {formatCurrency(total, filtered[0]?.currency || 'USD')}</Text>
-    </Box>
+    <Modal isOpen={isOpen} onClose={onClose} isCentered size="sm">
+      <ModalOverlay />
+      <ModalContent borderRadius="xl" p={6}>
+        <ModalHeader textAlign="center" color="primary.700" fontWeight="bold" fontSize="2xl">
+          {isEditing ? "Edit Goal" : "Add Goal"}
+        </ModalHeader>
+        <ModalBody>
+          <Input
+            placeholder="Goal name"
+            mb={2}
+            value={goalForm.name}
+            name="name"
+            onChange={e => setGoalForm(f => ({ ...f, name: e.target.value }))}
+          />
+          <Input
+            placeholder="Target amount"
+            mb={2}
+            value={goalForm.target}
+            name="target"
+            onChange={e => setGoalForm(f => ({ ...f, target: e.target.value }))}
+            type="number"
+          />
+          <Select
+            mb={2}
+            value={goalForm.currency}
+            name="currency"
+            onChange={e => setGoalForm(f => ({ ...f, currency: e.target.value }))}
+          >
+            <option value="USD">USD</option>
+            <option value="COP">COP</option>
+          </Select>
+          <Input
+            placeholder="Goal date (optional)"
+            mb={2}
+            value={goalForm.date}
+            name="date"
+            onChange={e => setGoalForm(f => ({ ...f, date: e.target.value }))}
+            type="date"
+          />
+        </ModalBody>
+        <ModalFooter display="flex" justifyContent="center">
+          <Button colorScheme="primary" onClick={handleGoalSubmit}>{isEditing ? "Update Goal" : "Add Goal"}</Button>
+          <Button ml={3} onClick={onClose}>Cancel</Button>
+        </ModalFooter>
+      </ModalContent>
+    </Modal>
   );
 }
-
+// --- DASHBOARD CONTENT ---
 function DashboardContent() {
-  // --- Login State ---
-  const [showLogin, setShowLogin] = useState(() => !localStorage.getItem("activeUser"));
+  // --- STATES ---
+  const [showLogin, setShowLogin] = useState(true);
+  const [pendingUser, setPendingUser] = useState(0);
   const [password, setPassword] = useState("");
   const [loginError, setLoginError] = useState("");
-  const [pendingUser, setPendingUser] = useState(0);
+  const [activeUser, setActiveUser] = useState(0);
+  const [currency, setCurrency] = useState(users[0].currency);
 
-  // --- User State ---
-  const [activeUser, setActiveUser] = useState(() => {
-    const idx = localStorage.getItem("activeUser");
-    return idx !== null ? Number(idx) : 0;
-  });
-  const user = users[activeUser];
-  const [currency, setCurrency] = useState(user.currency);
-
-  // --- Financial State and Movements ---
   const [movements, setMovements] = useState([[], []]);
-  // Cargar movements desde Supabase al iniciar
-  useEffect(() => {
-    async function fetchMovements() {
-      const { data, error } = await supabase.from('movements').select('*');
-      if (!error) {
-        const gabbyMovs = data.filter(m => m.username === "Gabby");
-        const jorgieMovs = data.filter(m => m.username === "Jorgie");
-        setMovements([gabbyMovs, jorgieMovs]);
-      }
-    }
-    fetchMovements();
-  }, []);
-
-  // --- Goals State ---
   const [goals, setGoals] = useState([]);
-  // Cargar goals desde Supabase al iniciar
-  useEffect(() => {
-    async function fetchGoals() {
-      const { data, error } = await supabase.from('goals').select('*').order('inserted_at', { ascending: true });
-      if (error) {
-        toast({ title: 'Error loading goals', description: error.message, status: 'error' });
-      } else {
-        setGoals(data || []);
-      }
-    }
-    fetchGoals();
-  }, []);
+  const [fixedExpenses, setFixedExpenses] = useState([[], []]);
+  const [selectedMonth, setSelectedMonth] = useState({ month: new Date().getMonth(), year: new Date().getFullYear() });
+  const [monthSummaryOpen, setMonthSummaryOpen] = useState(false);
+  const [fixedModalOpen, setFixedModalOpen] = useState(false);
+  const [addModalOpen, setAddModalOpen] = useState(false);
 
-  // --- Realtime Subscriptions for goals and movements ---
-  useEffect(() => {
-    // Suscripción a cambios en 'goals'
-    const goalsSub = supabase
-      .channel('public:goals')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'goals' }, payload => {
-        // Refresca los goals al detectar cualquier cambio
-        supabase.from('goals').select('*').order('inserted_at', { ascending: true })
-          .then(({ data }) => setGoals(data || []));
-      })
-      .subscribe();
-
-    // Suscripción a cambios en 'movements'
-    const movSub = supabase
-      .channel('public:movements')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'movements' }, payload => {
-        // Refresca los movements al detectar cualquier cambio
-        supabase.from('movements').select('*').order('inserted_at', { ascending: true })
-          .then(({ data }) => {
-            // Agrupa por usuario
-            setMovements([
-              (data || []).filter(m => m.username === 'Gabby'),
-              (data || []).filter(m => m.username === 'Jorgie'),
-            ]);
-          });
-      })
-      .subscribe();
-
-    // Limpia las suscripciones al desmontar
-    return () => {
-      supabase.removeChannel(goalsSub);
-      supabase.removeChannel(movSub);
-    };
-  }, []);
-
-  // --- UI States for Modals and Tabs ---
-  const [goalModalOpen, setGoalModalOpen] = useState(false);
-  const [editGoalIndex, setEditGoalIndex] = useState(null);
-  const [goalForm, setGoalForm] = useState({ name: "", target: "", date: "" });
-
-  const [showMovementModal, setShowMovementModal] = useState(false);
+  const [addTab, setAddTab] = useState("movement");
   const [movementType, setMovementType] = useState("income");
   const [movementAmount, setMovementAmount] = useState("");
-  const [movementCurrency, setMovementCurrency] = useState(user.currency);
-  const [movementSource, setMovementSource] = useState("First Check");
   const [movementCategory, setMovementCategory] = useState("");
+  const [movementSource, setMovementSource] = useState(INCOME_SOURCES[0]);
   const [movementAuto, setMovementAuto] = useState(false);
-  const [autoDeductAmount, setAutoDeductAmount] = useState("");
-  const [autoDeductInstallments, setAutoDeductInstallments] = useState("");
-  const [autoDeductCheck, setAutoDeductCheck] = useState("First Check");
-  const [autoDeductGoals, setAutoDeductGoals] = useState([]);
-  const [debtFrequency, setDebtFrequency] = useState("Monthly");
+  const [movementCurrency, setMovementCurrency] = useState(users[0].currency);
+  const [movementGoal, setMovementGoal] = useState("");
 
-  const [tab, setTab] = useState(0);
-  const [monthSummaryOpen, setMonthSummaryOpen] = useState(false);
-  const [selectedMonth, setSelectedMonth] = useState(() => {
-    const now = new Date();
-    return { month: now.getMonth(), year: now.getFullYear() };
-  });
-  const [showMonthMovements, setShowMonthMovements] = useState({});
+  const [fixedForm, setFixedForm] = useState({ name: "", amount: "", currency: users[0].currency, frequency: "monthly", period: "first", type: "expense", username: users[0].name, active: true });
+  const [editFixedIdx, setEditFixedIdx] = useState(null);
+
+  // NUEVO: Estado para el modal de goal
+  const [goalModalOpen, setGoalModalOpen] = useState(false);
+  const [goalForm, setGoalForm] = useState({ name: "", target: "", currency: "USD", date: "" });
+  const [editGoalIndex, setEditGoalIndex] = useState(null);
+
+  const isMobile = useBreakpointValue({ base: true, md: false });
   const toast = useToast();
 
-  // --- Movements by Month for Home Tab ---
-  const userMovementsByMonth = getMovementsByMonth(movements[activeUser]);
-  const allMonths = Object.keys(userMovementsByMonth).sort((a, b) => b.localeCompare(a)); // newest first
-  const [selectedMovMonth, setSelectedMovMonth] = useState("");
-  useEffect(() => {
-    if (!selectedMovMonth && allMonths.length > 0) {
-      setSelectedMovMonth(allMonths[0]);
-    }
-    // Si el mes seleccionado ya no existe, selecciona el primero disponible
-    if (selectedMovMonth && !allMonths.includes(selectedMovMonth) && allMonths.length > 0) {
-      setSelectedMovMonth(allMonths[0]);
-    }
-  }, [allMonths, selectedMovMonth]);
-  const selectedMovements = selectedMovMonth ? userMovementsByMonth[selectedMovMonth] || [] : [];
-
-  // --- Fixed Expenses State ---
-  const [fixedExpenses, setFixedExpenses] = useState([]);
-  const [showFixedSummary, setShowFixedSummary] = useState(false);
-  const [fixedPeriod, setFixedPeriod] = useState('first');
-  const [showCheckModal, setShowCheckModal] = useState(false);
-  const [checkAmount, setCheckAmount] = useState('');
-  const [checkCurrency, setCheckCurrency] = useState(user.currency);
-  const [lastCheck, setLastCheck] = useState(null);
-  const [savingsGoalMap, setSavingsGoalMap] = useState({});
-  const [showFixedExpenseModal, setShowFixedExpenseModal] = useState(false);
-  const [editingFixedExpense, setEditingFixedExpense] = useState(null);
-  const [fixedExpenseForm, setFixedExpenseForm] = useState({
-    name: "",
-    amount: "",
-    currency: "USD",
-    frequency: "monthly",
-    period: "",
-    type: "expense",
-    active: true
-  });
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [expenseToDelete, setExpenseToDelete] = useState(null);
-
-  const [paycheckDeductions, setPaycheckDeductions] = useState([]); // [{id, name, type, amount, currency, assignGoals: [goalId, ...]}]
+  // ---- DATA FETCHING ----
+  async function fetchMovements() {
+    try {
+      const { data: gabby } = await supabase.from("movements").select("*").eq("username", "Gabby").order("date", { ascending: false });
+      const { data: jorgie } = await supabase.from("movements").select("*").eq("username", "Jorgie").order("date", { ascending: false });
+      setMovements([gabby || [], jorgie || []]);
+    } catch (e) { }
+  }
+  async function fetchGoals() {
+    try {
+      const { data } = await supabase.from("goals").select("*").order("id", { ascending: false });
+      setGoals(data || []);
+    } catch (e) { }
+  }
+  async function fetchFixed() {
+    try {
+      const { data: gabby } = await supabase.from("fixed_expenses").select("*").eq("username", "Gabby").order("id", { ascending: false });
+      const { data: jorgie } = await supabase.from("fixed_expenses").select("*").eq("username", "Jorgie").order("id", { ascending: false });
+      setFixedExpenses([gabby || [], jorgie || []]);
+    } catch (e) { }
+  }
 
   useEffect(() => {
-    async function fetchFixedExpenses() {
-      const { data, error } = await supabase
-        .from('fixed_expenses')
-        .select('*')
-        .eq('active', true);
-      if (!error) setFixedExpenses(data || []);
-    }
-    fetchFixedExpenses();
-  }, []);
-
-  useEffect(() => {
-    async function fetchGoals() {
-      const { data, error } = await supabase.from('goals').select('*').order('inserted_at', { ascending: true });
-      if (!error) setGoals(data || []);
-    }
+    fetchMovements();
     fetchGoals();
+    fetchFixed();
+    const interval = setInterval(() => {
+      fetchMovements();
+      fetchGoals();
+      fetchFixed();
+    }, 5000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line
   }, []);
 
-  // --- New: Assign savings to one or more goals ---
-  function handleSavingsGoalChange(fixedExpenseId, selectedGoalIds) {
-    setSavingsGoalMap(prev => ({ ...prev, [fixedExpenseId]: selectedGoalIds }));
-  }
+  useEffect(() => {
+    const now = new Date();
+    setSelectedMonth({ month: now.getMonth(), year: now.getFullYear() });
+  }, []);
 
-  // --- Updated: Generate automatic movements with savings assigned to goals ---
-  async function generateFixedExpensesMovements(period, username) {
-    for (const expense of fixedExpenses) {
-      if (expense.period && expense.period !== period.label) continue;
-      if (expense.type === 'savings') {
-        // Assign to selected goals
-        const selectedGoalIds = savingsGoalMap[expense.id] || [];
-        if (selectedGoalIds.length > 0) {
-          // Split amount equally among selected goals
-          const splitAmount = Math.floor(Number(expense.amount) / selectedGoalIds.length);
-          for (let i = 0; i < selectedGoalIds.length; i++) {
-            const goal = goals.find(g => g.id === selectedGoalIds[i]);
-            if (!goal) continue;
-            // Check if already exists
-            const { data: existing } = await supabase
-              .from('movements')
-              .select('*')
-              .eq('category', `Saving for ${goal.name}`)
-              .eq('date', period.startDate)
-              .eq('username', username);
-            if (!existing || existing.length === 0) {
-              await supabase.from('movements').insert([{
-                type: 'savings',
-                amount: splitAmount,
-                category: `Saving for ${goal.name}`,
-                currency: expense.currency,
-                date: period.startDate,
-                username: username,
-                auto: true
-              }]);
-            }
-          }
-        }
-      } else {
-        // Normal fixed expense
-        const { data: existing } = await supabase
-          .from('movements')
-          .select('*')
-          .eq('category', expense.name)
-          .eq('date', period.startDate)
-          .eq('username', username);
-        if (!existing || existing.length === 0) {
-          await supabase.from('movements').insert([{
-            type: expense.type,
-            amount: expense.amount,
-            category: expense.name,
-            currency: expense.currency,
-            date: period.startDate,
-            username: username,
-            auto: true
-          }]);
-        }
-      }
-    }
-    toast({ title: 'Automatic movements generated', status: 'success', duration: 2000 });
-    // Refresh movements
-    const { data } = await supabase.from('movements').select('*');
-    if (data) {
-      const gabbyMovs = data.filter(m => m.username === "Gabby");
-      const jorgieMovs = data.filter(m => m.username === "Jorgie");
-      setMovements([gabbyMovs, jorgieMovs]);
-    }
-  }
-
-  // --- Responsive helpers ---
-  const isMobile = useBreakpointValue({ base: true, md: false });
-
-  // --- Login Handlers ---
+  // ---- LOGIN ----
   function handleLogin(e) {
     e.preventDefault();
     if (password === "0325") {
@@ -385,251 +237,108 @@ function DashboardContent() {
     }
   }
 
-  // --- Movement Handlers ---
-  async function handleUnifiedMovementSubmit() {
+  function openAddModal(tab = "movement") {
+    setAddTab(tab);
+    setAddModalOpen(true);
+    setMovementType("income");
+    setMovementAmount("");
+    setMovementCategory("");
+    setMovementSource(INCOME_SOURCES[0]);
+    setMovementAuto(false);
+    setMovementCurrency(users[activeUser].currency);
+    setMovementGoal("");
+    setFixedForm({ name: "", amount: "", currency: users[activeUser].currency, frequency: "monthly", period: "first", type: "expense", username: users[activeUser].name, active: true });
+    setEditFixedIdx(null);
+  }
+
+  async function handleMovementSubmit() {
     const amt = parseAmount(movementAmount);
     if (!amt || amt <= 0) {
       toast({ title: "Please enter a valid amount", status: "warning", duration: 2000 });
       return;
     }
-    if (movementType === "income") {
-      if (!movementSource) {
-        toast({ title: "Please select a source", status: "warning" });
-        return;
-      }
-      // Income: amount, currency, source
-      const { error } = await supabase.from('movements').insert([{
-        type: 'income',
-      amount: amt,
-        category: movementSource,
-      currency: movementCurrency,
-      date: todayStr(),
-        username: user.name,
-        auto: false
-      }]);
-      if (error) {
-        toast({ title: "Error saving income", description: error.message, status: "error" });
-        return;
-      }
-    } else if (movementType === "expenses") {
-      if (!movementCategory) {
-        toast({ title: "Please select a category", status: "warning" });
-        return;
-      }
-      const { error } = await supabase.from('movements').insert([{
-        type: 'expenses',
+    try {
+      let newMov = {
+        type: movementType,
         amount: amt,
-        category: movementCategory,
+        category: movementType === "savings" && movementGoal ? `Saving for ${movementGoal}` : (movementType === "income" || movementType === "savings" ? movementSource : movementCategory),
         currency: movementCurrency,
         date: todayStr(),
-        username: user.name,
-        auto: false
-      }]);
-      if (error) {
-        toast({ title: "Error saving expense", description: error.message, status: "error" });
-        return;
-      }
-    } else if (movementType === "savings") {
-      if (!movementSource) {
-        toast({ title: "Please select a source", status: "warning" });
-        return;
-      }
-      // Si es automático
-      if (movementAuto) {
-        const autoAmt = parseAmount(autoDeductAmount);
-        if (!autoAmt || autoAmt <= 0) {
-          toast({ title: "Enter deduction amount", status: "warning" });
-          return;
-        }
-        if (!autoDeductCheck) {
-          toast({ title: "Select which check is deducted", status: "warning" });
-          return;
-        }
-        if (!autoDeductGoals || autoDeductGoals.length === 0) {
-          toast({ title: "Select at least one goal for savings", status: "warning" });
-          return;
-        }
-        // Divide el monto entre los goals
-        const splitAmt = Math.floor(autoAmt / autoDeductGoals.length);
-        for (let i = 0; i < autoDeductGoals.length; i++) {
-          const goal = goals.find(g => g.id === autoDeductGoals[i]);
-          if (!goal) continue;
-          const { error } = await supabase.from('movements').insert([{
-            type: 'savings',
-            amount: splitAmt,
-            category: `Saving for ${goal.name}`,
-            currency: movementCurrency,
-            date: todayStr(),
-            username: user.name,
-            auto: true
-          }]);
-          if (error) {
-            toast({ title: "Error saving savings", description: error.message, status: "error" });
-            return;
-          }
-        }
-        // Guarda como fixed_expense para automatización futura
-        await supabase.from('fixed_expenses').insert([{
-          name: 'Automatic Savings',
-          amount: Number(autoAmt),
-          currency: movementCurrency,
-          frequency: 'monthly',
-          username: user.name,
-          type: 'savings',
-          active: true
-        }]);
-      } else {
-        // Savings normal
-        const category = movementCategory || movementSource;
-        const { error } = await supabase.from('movements').insert([{
-          type: 'savings',
-          amount: amt,
-          category,
-          currency: movementCurrency,
-          date: todayStr(),
-          username: user.name,
-          auto: false
-        }]);
-        if (error) {
-          toast({ title: "Error saving savings", description: error.message, status: "error" });
-          return;
-        }
-      }
-    } else if (movementType === "debts") {
-      if (!movementCategory) {
-        toast({ title: "Please select a category", status: "warning" });
-        return;
-      }
-      // Si es automático
-      if (movementAuto) {
-        const autoAmt = parseAmount(autoDeductAmount);
-        const installments = parseInt(autoDeductInstallments);
-        if (!autoAmt || autoAmt <= 0) {
-          toast({ title: "Enter deduction amount", status: "warning" });
-          return;
-        }
-        if (!autoDeductCheck) {
-          toast({ title: "Select which check is deducted", status: "warning" });
-          return;
-        }
-        if (!installments || installments <= 0) {
-          toast({ title: "Enter number of installments", status: "warning" });
-          return;
-        }
-        // Crea movimientos para cada cuota (uno por mes/quincena)
-        let cuotas = [];
-        let startDate = new Date();
-        if (autoDeductCheck === 'First Check') {
-          for (let i = 0; i < installments; i++) {
-            let due = new Date(startDate.getFullYear(), startDate.getMonth() + i, 1);
-            cuotas.push(due);
-          }
-        } else if (autoDeductCheck === 'Second Check') {
-          let count = 0;
-          let month = startDate.getMonth();
-          let year = startDate.getFullYear();
-          let day = startDate.getDate() <= 15 ? 1 : 15;
-          while (count < installments) {
-            cuotas.push(new Date(year, month, day));
-            count++;
-            if (day === 1) {
-              day = 15;
-            } else {
-              day = 1;
-              month++;
-              if (month > 11) { month = 0; year++; }
-            }
-          }
-        }
-        for (let i = 0; i < cuotas.length; i++) {
-          const dateStr = cuotas[i].toISOString().slice(0,10);
-          const { error } = await supabase.from('movements').insert([{
-            type: 'debts',
-            amount: autoAmt,
-            category: movementCategory,
-            currency: movementCurrency,
-            date: dateStr,
-            username: user.name,
-            auto: true
-          }]);
-          if (error) {
-            toast({ title: "Error saving debt", description: error.message, status: "error" });
-            return;
-          }
-        }
-        // Guarda como fixed_expense para automatización futura
-        await supabase.from('fixed_expenses').insert([{
-          name: String(movementCategory),
-          amount: Number(autoAmt),
-          currency: String(movementCurrency),
-          frequency: autoDeductCheck ? String(autoDeductCheck).toLowerCase() : 'monthly',
-          username: user && user.name ? String(user.name) : '',
-          type: 'debt',
-          active: true
-        }]);
-      } else {
-        // Debt normal (solo el mes actual)
-        const { error } = await supabase.from('movements').insert([{
-          type: 'debts',
-          amount: amt,
-          category: movementCategory,
-          currency: movementCurrency,
-          date: todayStr(),
-          username: user.name,
-          auto: false
-        }]);
-        if (error) {
-          toast({ title: "Error saving debt", description: error.message, status: "error" });
-          return;
-        }
-      }
+        auto: movementAuto,
+        username: users[activeUser].name
+      };
+      const { error } = await supabase.from("movements").insert([newMov]);
+      if (error) throw new Error(`Error inserting movement: ${error.message}`);
+      await fetchMovements();
+      setAddModalOpen(false);
+      toast({ title: "Movement added", status: "success", duration: 1500 });
+    } catch (error) {
+      toast({ title: "Error saving movement", description: error.message, status: "error", duration: 5000, isClosable: true });
     }
-    setShowMovementModal(false);
-    // Refresca movimientos
-    const { data } = await supabase.from('movements').select('*');
-    if (data) {
-      const gabbyMovs = data.filter(m => m.username === "Gabby");
-      const jorgieMovs = data.filter(m => m.username === "Jorgie");
-      setMovements([gabbyMovs, jorgieMovs]);
+  }
+
+  async function handleDeleteMovement(id) {
+    try {
+      await supabase.from("movements").delete().eq("id", id);
+      await fetchMovements();
+      toast({ title: "Movement deleted", status: "info", duration: 1500 });
+    } catch (error) {
+      toast({ title: "Error deleting movement", description: error.message, status: "error", duration: 3000 });
     }
-    toast({ title: "Movement added", status: "success", duration: 1500 });
   }
 
-  // --- Export Function ---
-  function handleExportExcel() {
-    const data = movements[activeUser].map(m => ({
-      Type: m.type,
-      Amount: m.amount,
-      Category: m.category,
-      Currency: m.currency,
-      Date: prettyDate(m.date)
-    }));
-    const ws = XLSX.utils.json_to_sheet(data);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Movements");
-    XLSX.writeFile(wb, `${user.name}_movements.xlsx`);
+  async function handleAddFixed() {
+    const amt = parseAmount(fixedForm.amount);
+    if (!fixedForm.name || isNaN(amt) || amt <= 0) {
+      toast({ title: "Name and valid amount required", status: "warning", duration: 1200 });
+      return;
+    }
+    try {
+      await supabase.from("fixed_expenses").insert([{ ...fixedForm, amount: amt }]);
+      toast({ title: "Fixed expense added", status: "success", duration: 1200 });
+      setAddModalOpen(false);
+      await fetchFixed();
+    } catch (error) {
+      toast({ title: "Error adding fixed expense", description: error.message, status: "error", duration: 3000 });
+    }
   }
 
-  // --- Currency Toggle ---
-  function handleCurrencyToggle() {
-    setCurrency(c => c === "USD" ? "COP" : "USD");
+  async function handleEditFixed(idx) {
+    setFixedForm(fixedExpenses[activeUser][idx]);
+    setEditFixedIdx(idx);
+    setAddTab("fixed");
+    setAddModalOpen(true);
   }
 
-  // --- Logout ---
-  function handleLogout() {
-    setShowLogin(true);
-    setActiveUser(0);
-    localStorage.removeItem("activeUser");
-    toast({ title: "Logged out!", status: "info", duration: 1500 });
+  async function handleUpdateFixed() {
+    const amt = parseAmount(fixedForm.amount);
+    if (!fixedForm.name || !amt) {
+      toast({ title: "Name and amount required", status: "warning", duration: 1200 });
+      return;
+    }
+    try {
+      await supabase.from("fixed_expenses").update({ ...fixedForm, amount: amt }).eq("id", fixedExpenses[activeUser][editFixedIdx].id);
+      toast({ title: "Fixed expense updated", status: "success", duration: 1200 });
+      setAddModalOpen(false);
+      await fetchFixed();
+    } catch (error) {
+      toast({ title: "Error updating fixed expense", description: error.message, status: "error", duration: 3000 });
+    }
   }
 
-  // --- Goal Handlers ---
-  function handleGoalFormChange(e) {
-    const { name, value } = e.target;
-    setGoalForm(f => ({ ...f, [name]: value }));
+  async function handleDeleteFixed(id) {
+    try {
+      await supabase.from("fixed_expenses").delete().eq("id", id);
+      await fetchFixed();
+      toast({ title: "Fixed expense deleted", status: "info", duration: 1200 });
+    } catch (error) {
+      toast({ title: "Error deleting fixed expense", description: error.message, status: "error", duration: 3000 });
+    }
   }
+
+  // NUEVO: Modal goal handlers
   function handleAddGoal() {
-    setGoalForm({ name: "", target: "", date: "" });
+    setGoalForm({ name: "", target: "", currency: "USD", date: "" });
     setEditGoalIndex(null);
     setGoalModalOpen(true);
   }
@@ -638,51 +347,65 @@ function DashboardContent() {
     setEditGoalIndex(idx);
     setGoalModalOpen(true);
   }
-  async function handleDeleteGoal(idx) {
-    const goal = goals[idx];
-    const { error } = await supabase.from('goals').delete().eq('id', goal.id);
-    if (error) {
-      toast({ title: 'Error deleting goal', description: error.message, status: 'error' });
-    } else {
-      // Refresca goals desde Supabase
-      const { data } = await supabase.from('goals').select('*').order('inserted_at', { ascending: true });
-      setGoals(data || []);
-      toast({ title: "Goal deleted", status: "info", duration: 2000 });
-    }
-  }
   async function handleGoalSubmit() {
-    if (!goalForm.name || !goalForm.target) {
+    const amt = parseAmount(goalForm.target);
+    if (!goalForm.name || !amt) {
       toast({ title: "Name and target required", status: "warning", duration: 2000 });
       return;
     }
-    if (editGoalIndex !== null) {
-      // Update
-      const goal = goals[editGoalIndex];
-      const { error } = await supabase.from('goals').update({ ...goalForm }).eq('id', goal.id);
-      if (error) {
-        toast({ title: 'Error updating goal', description: error.message, status: 'error' });
-      } else {
-        // Refresca goals desde Supabase
-        const { data } = await supabase.from('goals').select('*').order('inserted_at', { ascending: true });
-        setGoals(data || []);
+    try {
+      if (editGoalIndex !== null && goals[editGoalIndex]) {
+        await supabase.from("goals").update({ ...goalForm, target: amt }).eq("id", goals[editGoalIndex].id);
         toast({ title: "Goal updated", status: "success", duration: 2000 });
-      }
-    } else {
-      // Insert
-      const { error } = await supabase.from('goals').insert([{ ...goalForm, created_by: users[activeUser].name }]);
-      if (error) {
-        toast({ title: 'Error adding goal', description: error.message, status: 'error' });
       } else {
-        // Refresca goals desde Supabase
-        const { data } = await supabase.from('goals').select('*').order('inserted_at', { ascending: true });
-        setGoals(data || []);
+        await supabase.from("goals").insert([{ ...goalForm, target: amt }]);
         toast({ title: "Goal added", status: "success", duration: 2000 });
       }
+      setGoalModalOpen(false);
+      await fetchGoals();
+    } catch (error) {
+      toast({ title: "Error with goal", description: error.message, status: "error", duration: 3000 });
     }
-    setGoalModalOpen(false);
+  }
+  async function handleDeleteGoal(idx) {
+    try {
+      await supabase.from("goals").delete().eq("id", goals[idx].id);
+      await fetchGoals();
+      toast({ title: "Goal deleted", status: "info", duration: 2000 });
+    } catch (error) {
+      toast({ title: "Error deleting goal", description: error.message, status: "error", duration: 3000 });
+    }
   }
 
-  // --- Summary Calculation Functions ---
+  function handleExportExcel() {
+    try {
+      const data = movements[activeUser].map(m => ({
+        Type: m.type,
+        Amount: m.amount,
+        Category: m.category,
+        Currency: m.currency,
+        Date: prettyDate(m.date)
+      }));
+      const ws = XLSX.utils.json_to_sheet(data);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Movements");
+      XLSX.writeFile(wb, `${users[activeUser].name}_movements.xlsx`);
+    } catch (error) {
+      toast({ title: "Error exporting data", description: error.message, status: "error", duration: 3000 });
+    }
+  }
+
+  function handleCurrencyToggle() {
+    setCurrency(c => c === "USD" ? "COP" : "USD");
+  }
+
+  function handleLogout() {
+    setShowLogin(true);
+    setActiveUser(0);
+    localStorage.removeItem("activeUser");
+    toast({ title: "Logged out!", status: "info", duration: 1500 });
+  }
+
   function getSummary(movs, curr, month = null, year = null) {
     let income = 0, expenses = 0, savings = 0, debts = 0;
     movs.forEach(m => {
@@ -699,352 +422,542 @@ function DashboardContent() {
     });
     return { income, expenses, savings, debts, balance: income - expenses - debts };
   }
-  // Solo mostrar el resumen del mes actual
-  const nowSummaryMonth = new Date().getMonth();
-  const nowSummaryYear = new Date().getFullYear();
-  const summary = getSummary(movements[activeUser], currency, nowSummaryMonth, nowSummaryYear);
 
-  // --- Together Summary Calculation ---
-  // Filtrado robusto para Together: normaliza username y fecha
-  function getUserMovements(movs, username) {
-    return movs.filter(m => (m.username || '').toLowerCase() === username.toLowerCase());
+  function getGoalProgress(goal, currency) {
+    const gabbySaved = movements[0].filter(m => m.type === "savings" && m.category === `Saving for ${goal.name}`)
+      .reduce((a, m) => a + convert(m.amount, m.currency, currency), 0);
+    const jorgieSaved = movements[1].filter(m => m.type === "savings" && m.category === `Saving for ${goal.name}`)
+      .reduce((a, m) => a + convert(m.amount, m.currency, currency), 0);
+    const totalSaved = gabbySaved + jorgieSaved;
+    const target = convert(goal.target, goal.currency, currency);
+    return {
+      gabbySaved, jorgieSaved, totalSaved, target,
+      percent: target ? (totalSaved / target) * 100 : 0,
+      percentGabby: target ? (gabbySaved / target) * 100 : 0,
+      percentJorgie: target ? (jorgieSaved / target) * 100 : 0
+    };
   }
-  // Obtén movimientos de Gabby y Jorgie robustamente
-  const gabbyMovs = getUserMovements([].concat(...movements), 'Gabby');
-  const jorgieMovs = getUserMovements([].concat(...movements), 'Jorgie');
-  // Solo del mes actual
-  function filterByMonth(movs, month, year) {
-    return movs.filter(m => {
-      if (!m.date) return false;
-      const d = new Date(m.date);
-      return d.getMonth() === month && d.getFullYear() === year;
-    });
-  }
-  const gabbyMovsMonth = filterByMonth(gabbyMovs, nowSummaryMonth, nowSummaryYear);
-  const jorgieMovsMonth = filterByMonth(jorgieMovs, nowSummaryMonth, nowSummaryYear);
-  // Suma por tipo
-  function sumByType(movs, type) {
-    return movs.filter(m => m.type === type).reduce((acc, m) => acc + convert(m.amount, m.currency, currency), 0);
-  }
-  const togetherSummary = {
-    income: sumByType(gabbyMovsMonth, 'income') + sumByType(jorgieMovsMonth, 'income'),
-    expenses: sumByType(gabbyMovsMonth, 'expenses') + sumByType(jorgieMovsMonth, 'expenses'),
-    savings: sumByType(gabbyMovsMonth, 'savings') + sumByType(jorgieMovsMonth, 'savings'),
-    debts: sumByType(gabbyMovsMonth, 'debts') + sumByType(jorgieMovsMonth, 'debts'),
-    balance:
-      (sumByType(gabbyMovsMonth, 'income') + sumByType(jorgieMovsMonth, 'income'))
-      - (sumByType(gabbyMovsMonth, 'expenses') + sumByType(jorgieMovsMonth, 'expenses'))
-      - (sumByType(gabbyMovsMonth, 'debts') + sumByType(jorgieMovsMonth, 'debts'))
-  };
-
-  // --- Pie Chart Data (Current Month) ---
-  
-  const currentMonth = new Date().getMonth();
-  const currentYear = new Date().getFullYear();
-  const pieData = [
-    { name: "Income", value: getSummary(movements[activeUser], currency, currentMonth, currentYear).income },
-    { name: "Expenses", value: getSummary(movements[activeUser], currency, currentMonth, currentYear).expenses },
-    { name: "Savings", value: getSummary(movements[activeUser], currency, currentMonth, currentYear).savings },
-    { name: "Debts", value: getSummary(movements[activeUser], currency, currentMonth, currentYear).debts }
-  ].filter(item => item.value !== 0);
-  const pieDataTogether = [
-    { name: `${users[0].label} Income`, value: sumByType(gabbyMovsMonth, 'income'), color: users[0].chartColor },
-    { name: `${users[1].label} Income`, value: sumByType(jorgieMovsMonth, 'income'), color: users[1].chartColor },
-    { name: `${users[0].label} Expenses`, value: sumByType(gabbyMovsMonth, 'expenses'), color: users[0].chartColor },
-    { name: `${users[1].label} Expenses`, value: sumByType(jorgieMovsMonth, 'expenses'), color: users[1].chartColor },
-    { name: `${users[0].label} Savings`, value: sumByType(gabbyMovsMonth, 'savings'), color: users[0].chartColor },
-    { name: `${users[1].label} Savings`, value: sumByType(jorgieMovsMonth, 'savings'), color: users[1].chartColor },
-    { name: `${users[0].label} Debts`, value: sumByType(gabbyMovsMonth, 'debts'), color: users[0].chartColor },
-    { name: `${users[1].label} Debts`, value: sumByType(jorgieMovsMonth, 'debts'), color: users[1].chartColor }
-  ].filter(item => item.value !== 0);
-
-  // --- Movements by Month ---
-  function getMovementsByMonth(movs) {
-    const byMonth = {};
-    movs.forEach(m => {
-      // Normaliza username y parsea fecha robustamente
-      if (!m.date || !m.username) return;
-      const userNorm = (m.username || '').toLowerCase();
-      const keyDate = new Date(m.date);
-      if (isNaN(keyDate)) return;
-      const key = `${keyDate.getFullYear()}-${String(keyDate.getMonth()).padStart(2, "0")}`;
-      if (!byMonth[key]) byMonth[key] = [];
-      byMonth[key].push(m);
-    });
-    return byMonth;
-  }
-  
-  const now = new Date();
-  const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth()).padStart(2, "0")}`;
-  const currentMonthMovements = userMovementsByMonth[currentMonthKey] || [];
-
-  // --- Estado para la moneda de Goals ---
-  const [goalCurrency, setGoalCurrency] = useState("USD");
-  function convertCurrency(amount, from, to) {
-    if (from === to) return amount;
-    if (from === "USD" && to === "COP") return amount * COP_TO_USD;
-    if (from === "COP" && to === "USD") return amount / COP_TO_USD;
-    return amount;
-  }
-
-  // --- Expenses by Category Calculation ---
-  function getExpensesByCategory(movs, month, year, curr) {
-    const filtered = movs.filter(m => m.type === "expenses" && getMonthIndex(m.date) === month && getYear(m.date) === year);
-    const total = filtered.reduce((acc, m) => acc + convert(m.amount, m.currency, curr), 0);
-    const byCat = {};
-    filtered.forEach(m => {
-      const cat = m.category || "Other";
-      byCat[cat] = (byCat[cat] || 0) + convert(m.amount, m.currency, curr);
-    });
-    const result = Object.entries(byCat).map(([cat, amt]) => ({
-      category: cat,
-      amount: amt,
-      percent: total > 0 ? (amt / total) * 100 : 0
-    })).sort((a, b) => b.amount - a.amount);
-    return { total, data: result };
-  }
-
-  const { total: totalExpenses, data: expensesByCat } = getExpensesByCategory(movements[activeUser], selectedMonth.month, selectedMonth.year, currency);
-
-  // --- Helper para formatear input con separadores de miles:
-  function formatInputNumber(value) {
-    if (!value) return '';
-    const parts = value.toString().replace(/[^\d]/g, '').split('');
-    let out = '';
-    let count = 0;
-    for (let i = parts.length - 1; i >= 0; i--) {
-      out = parts[i] + out;
-      count++;
-      if (count % 3 === 0 && i !== 0) out = ',' + out;
-    }
-    return out;
-  }
-
-  // --- Nueva función para ingresar cheque y automatizar descuentos ---
-  async function handleCheckSubmit() {
-    const amt = parseAmount(checkAmount);
-    if (!amt || amt <= 0) {
-      toast({ title: 'Enter a valid amount', status: 'warning', duration: 2000 });
-      return;
-    }
-    // 1. Create income movement
-    const { error: incomeError } = await supabase.from('movements').insert([{
-      type: 'income',
-      amount: amt,
-      category: 'Paycheck',
-      currency: checkCurrency,
-      date: todayStr(),
-      username: user.name,
-      auto: true
-    }]);
-    if (incomeError) {
-      toast({ title: 'Error saving paycheck', description: incomeError.message, status: 'error' });
-      return;
-    }
-    // 2. Create deduction movements
-    for (const ded of paycheckDeductions) {
-      if (ded.type === 'savings' && ded.assignGoals && ded.assignGoals.length > 0) {
-        // Split savings among selected goals
-        const splitAmount = Math.floor(Number(ded.amount) / ded.assignGoals.length);
-        for (let i = 0; i < ded.assignGoals.length; i++) {
-          const goal = goals.find(g => g.id === ded.assignGoals[i]);
-          if (!goal) continue;
-          await supabase.from('movements').insert([{
-            type: 'savings',
-            amount: splitAmount,
-            category: `Saving for ${goal.name}`,
-            currency: ded.currency,
-            date: todayStr(),
-            username: user.name,
-            auto: true
-          }]);
-        }
-      } else if (ded.type !== 'savings') {
-        await supabase.from('movements').insert([{
-          type: ded.type,
-          amount: ded.amount,
-          category: ded.name,
-          currency: ded.currency,
-          date: todayStr(),
-          username: user.name,
-          auto: true
-        }]);
-      }
-    }
-    setLastCheck({ amount: amt, currency: checkCurrency });
-    setShowCheckModal(false);
-    setCheckAmount('');
-    // Refresh movements
-    const { data } = await supabase.from('movements').select('*');
-    if (data) {
-      const gabbyMovs = data.filter(m => m.username === "Gabby");
-      const jorgieMovs = data.filter(m => m.username === "Jorgie");
-      setMovements([gabbyMovs, jorgieMovs]);
-    }
-    toast({ title: 'Paycheck and deductions saved', status: 'success', duration: 2000 });
-  }
-
-  // --- Fixed Expense Modal Handlers ---
-  function openNewFixedExpense() {
-    setEditingFixedExpense(null);
-    setFixedExpenseForm({
-      name: "",
-      amount: "",
-      currency: "USD",
-      frequency: "monthly",
-      period: "",
-      type: "expense",
-      active: true
-    });
-    setShowFixedExpenseModal(true);
-  }
-
-  function openEditFixedExpense(expense) {
-    setEditingFixedExpense(expense);
-    setFixedExpenseForm({ ...expense });
-    setShowFixedExpenseModal(true);
-  }
-
-  function handleFixedExpenseFormChange(e) {
-    const { name, value, type, checked } = e.target;
-    setFixedExpenseForm(f => ({
-      ...f,
-      [name]: type === "checkbox" ? checked : value
-    }));
-  }
-
-  async function handleSaveFixedExpense() {
-    if (!fixedExpenseForm.name || !fixedExpenseForm.amount) {
-      toast({ title: "Name and amount are required", status: "warning" });
-      return;
-    }
-    if (editingFixedExpense) {
-      await supabase.from('fixed_expenses').update(fixedExpenseForm).eq('id', editingFixedExpense.id);
-    } else {
-      await supabase.from('fixed_expenses').insert([fixedExpenseForm]);
-    }
-    setShowFixedExpenseModal(false);
-    // Refresh list
-    const { data } = await supabase.from('fixed_expenses').select('*').eq('active', true);
-    setFixedExpenses(data || []);
-  }
-
-  async function handleDeleteFixedExpense() {
-    if (expenseToDelete) {
-      await supabase.from('fixed_expenses').delete().eq('id', expenseToDelete.id);
-      setShowDeleteConfirm(false);
-      setExpenseToDelete(null);
-      // Refresh list
-      const { data } = await supabase.from('fixed_expenses').select('*').eq('active', true);
-      setFixedExpenses(data || []);
-      toast({ title: 'Fixed expense deleted', status: 'info' });
-    }
-  }
-
-  // When opening the Add Paycheck modal, initialize deductions from active fixed expenses
-  function openPaycheckModal() {
-    // Map fixed expenses to editable deductions for this paycheck
-    const deductions = fixedExpenses.filter(e => e.active).map(e => ({
-      id: e.id,
-      name: e.name,
-      type: e.type,
-      amount: e.amount,
-      currency: e.currency,
-      assignGoals: [], // for savings
-    }));
-    setPaycheckDeductions(deductions);
-    setShowCheckModal(true);
-  }
-
-  function handleDeductionAmountChange(id, value) {
-    setPaycheckDeductions(deds => deds.map(d => d.id === id ? { ...d, amount: value } : d));
-  }
-
-  function handleDeductionGoalChange(id, selectedGoalIds) {
-    setPaycheckDeductions(deds => deds.map(d => d.id === id ? { ...d, assignGoals: selectedGoalIds } : d));
-  }
-
-  // --- Category Totals for Movements List by Month ---
-  // Group all types (income, expenses, savings, debts) by category for the selected month
-  const categoryTotals = React.useMemo(() => {
-    const monthMovements = selectedMovements;
-    const byCat = {};
-    monthMovements.forEach(m => {
-      const cat = m.category || "Other";
-      if (!byCat[cat]) {
-        byCat[cat] = {
-          category: cat,
-          type: m.type,
-          total: 0,
-          currency: m.currency,
-          movements: []
-        };
-      }
-      byCat[cat].total += convert(m.amount, m.currency, currency);
-      byCat[cat].movements.push(m);
-      // If there are mixed types in a category, prefer 'expenses' > 'income' > 'savings' > 'debts'
-      if (byCat[cat].type !== m.type) {
-        const typeOrder = { expenses: 1, income: 2, savings: 3, debts: 4 };
-        if (typeOrder[m.type] < typeOrder[byCat[cat].type]) {
-          byCat[cat].type = m.type;
-        }
-      }
-    });
-    // Sort: Wifey, Hubby first, then alphabetically
-    const sorted = Object.values(byCat).sort((a, b) => {
-      if (a.category === "Wifey") return -1;
-      if (b.category === "Wifey") return 1;
-      if (a.category === "Hubby") return -1;
-      if (b.category === "Hubby") return 1;
-      return a.category.localeCompare(b.category);
-    });
-    return sorted;
-  }, [selectedMovements, currency]);
-
-  // --- Expanded Categories State for Category Accordion ---
-  const [expandedCategories, setExpandedCategories] = useState([]);
-  const toggleCategory = (cat) => {
-    setExpandedCategories(prev =>
-      prev.includes(cat)
-        ? prev.filter(c => c !== cat)
-        : [...prev, cat]
+    // --- ADD MODAL (Movements & Fixed Expenses) ---
+  function renderAddModal() {
+    return (
+      <Modal isOpen={addModalOpen} onClose={() => setAddModalOpen(false)} isCentered size={isMobile ? "full" : "sm"}>
+        <ModalOverlay />
+        <ModalContent borderRadius="xl" p={isMobile ? 2 : 8} mx={isMobile ? 2 : undefined}>
+          <ModalHeader textAlign="center" color="primary.700" fontWeight="bold" fontSize="2xl">
+            {addTab === "fixed" || editFixedIdx !== null ? "Fixed Expense" : "Add Movement"}
+          </ModalHeader>
+          <ModalBody>
+            <Tabs
+              isFitted
+              colorScheme="primary"
+              index={addTab === "fixed" || editFixedIdx !== null ? 1 : 0}
+              onChange={(idx) => {
+                setAddTab(idx === 1 ? "fixed" : "movement");
+                setEditFixedIdx(null);
+              }}
+              variant="soft-rounded"
+              mb={4}
+            >
+              <TabList>
+                <Tab>Add Movement</Tab>
+                <Tab>Add Fixed</Tab>
+              </TabList>
+            </Tabs>
+            {addTab === "fixed" || editFixedIdx !== null ? (
+              <>
+                <Input
+                  placeholder="Name"
+                  mb={2}
+                  value={fixedForm.name}
+                  onChange={e => setFixedForm(f => ({ ...f, name: e.target.value }))}
+                />
+                <Input
+                  placeholder="Amount"
+                  mb={2}
+                  value={fixedForm.amount}
+                  onChange={e => setFixedForm(f => ({ ...f, amount: e.target.value }))}
+                  type="number"
+                />
+                <Select
+                  mb={2}
+                  value={fixedForm.currency}
+                  onChange={e => setFixedForm(f => ({ ...f, currency: e.target.value }))}
+                >
+                  <option value="USD">USD</option>
+                  <option value="COP">COP</option>
+                </Select>
+                <Select
+                  mb={2}
+                  value={fixedForm.frequency}
+                  onChange={e => setFixedForm(f => ({ ...f, frequency: e.target.value }))}
+                >
+                  <option value="monthly">Monthly</option>
+                  <option value="biweekly">Biweekly</option>
+                  <option value="yearly">Yearly</option>
+                </Select>
+                <Select
+                  mb={2}
+                  value={fixedForm.period}
+                  onChange={e => setFixedForm(f => ({ ...f, period: e.target.value }))}
+                >
+                  <option value="first">First</option>
+                  <option value="second">Second</option>
+                  <option value="both">Both</option>
+                </Select>
+                <Checkbox
+                  isChecked={fixedForm.active}
+                  onChange={e => setFixedForm(f => ({ ...f, active: e.target.checked }))}
+                  mb={2}
+                >
+                  Active
+                </Checkbox>
+              </>
+            ) : (
+              <>
+                <Select mb={2} value={movementType} onChange={e => setMovementType(e.target.value)}>
+                  <option value="income">Income</option>
+                  <option value="expenses">Expenses</option>
+                  <option value="savings">Savings</option>
+                  <option value="debts">Debts</option>
+                </Select>
+                <Input
+                  placeholder="Amount"
+                  mb={2}
+                  value={movementAmount}
+                  onChange={e => setMovementAmount(e.target.value)}
+                  type="number"
+                />
+                <Select mb={2} value={movementCurrency} onChange={e => setMovementCurrency(e.target.value)}>
+                  <option value="USD">USD</option>
+                  <option value="COP">COP</option>
+                </Select>
+                {movementType === "expenses" && (
+                  <Select mb={2} value={movementCategory} onChange={e => setMovementCategory(e.target.value)}>
+                    {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                  </Select>
+                )}
+                {movementType === "income" && (
+                  <Select mb={2} value={movementSource} onChange={e => setMovementSource(e.target.value)}>
+                    {INCOME_SOURCES.map(s => <option key={s} value={s}>{s}</option>)}
+                  </Select>
+                )}
+                {movementType === "savings" && (
+                  <Select mb={2} value={movementGoal} onChange={e => setMovementGoal(e.target.value)}>
+                    <option value="">Choose Goal</option>
+                    {goals.map(g => <option key={g.name} value={g.name}>{g.name}</option>)}
+                  </Select>
+                )}
+                <Checkbox isChecked={movementAuto} onChange={e => setMovementAuto(e.target.checked)} mb={2}>Automatic</Checkbox>
+              </>
+            )}
+          </ModalBody>
+          <ModalFooter display="flex" justifyContent="center">
+            {addTab === "fixed" || editFixedIdx !== null ? (
+              editFixedIdx !== null ? (
+                <Button colorScheme="primary" onClick={handleUpdateFixed}>Update Fixed</Button>
+              ) : (
+                <Button colorScheme="primary" onClick={handleAddFixed}>Add Fixed</Button>
+              )
+            ) : (
+              <Button colorScheme="primary" onClick={handleMovementSubmit}>Add Movement</Button>
+            )}
+            <Button ml={3} onClick={() => setAddModalOpen(false)}>Cancel</Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
     );
-  };
-
-  // --- Mostrar/Ocultar lista de movimientos ---
-  const [showMovementsList, setShowMovementsList] = useState(true);
-
-  // --- Eliminar movimiento por índice en selectedMovements ---
-  async function handleDeleteMovement(idx) {
-    const m = selectedMovements[idx];
-    if (!m) return;
-    const { error } = await supabase.from('movements').delete().eq('id', m.id);
-    if (error) {
-      toast({ title: 'Error deleting movement', description: error.message, status: 'error' });
-      return;
-    }
-    // Refresca movimientos
-    const { data } = await supabase.from('movements').select('*');
-    if (data) {
-      const gabbyMovs = data.filter(m => m.username === "Gabby");
-      const jorgieMovs = data.filter(m => m.username === "Jorgie");
-      setMovements([gabbyMovs, jorgieMovs]);
-    }
-    toast({ title: 'Movement deleted', status: 'info', duration: 1500 });
   }
 
-  // --- UI: Login ---
+  // ... (Aquí irían renderMonthSummaryModal, renderFixedExpensesModal, renderHomePanel, renderTogetherPanel, y el return principal) ...
+    // --- HOME PANEL ---
+  function renderHomePanel() {
+    const summary = getSummary(movements[activeUser], currency, selectedMonth.month, selectedMonth.year);
+
+    return (
+      <Flex
+        direction="column"
+        align="center"
+        justify="flex-start"
+        w="100%"
+        maxW={{ base: "98vw", md: "600px" }}
+        mx="auto"
+        px={{ base: 1, md: 4 }}
+        py={2}
+        bg="transparent"
+      >
+        {/* Overview Card */}
+        <Box
+          w="100%"
+          borderRadius="2xl"
+          bg="white"
+          boxShadow="lg"
+          p={{ base: 3, md: 6 }}
+          mt={2}
+          mb={2}
+          textAlign="center"
+          display="flex"
+          flexDirection="column"
+          alignItems="center"
+          overflow="hidden"
+          maxW="100%"
+        >
+          <Avatar size="xl" src={users[activeUser].avatar} mb={2} border={`3px solid ${users[activeUser].color}`} mx="auto" />
+          <Heading size={{ base: "sm", md: "md" }} color="primary.700" mb={0} fontWeight="bold">{users[activeUser].name}'s Overview</Heading>
+          <Text color="primary.400" fontSize={{ base: "sm", md: "md" }} mb={4} isTruncated>Every step matters.</Text>
+          <Box
+            w="100%"
+            maxW={{ base: "98vw", md: "330px" }}
+            bg="primary.100"
+            borderRadius="lg"
+            px={4}
+            py={3}
+            mb={3}
+            boxShadow="sm"
+            mx="auto"
+            fontSize={{ base: "sm", md: "md" }}
+          >
+            <SimpleGrid columns={2} spacing={1}>
+              <Box>
+                <Text fontWeight="bold" color="primary.700">Income</Text>
+                <Text color="green.600">{formatCurrency(summary.income, currency)}</Text>
+              </Box>
+              <Box>
+                <Text fontWeight="bold" color="primary.700">Expenses</Text>
+                <Text color="red.600">{formatCurrency(summary.expenses, currency)}</Text>
+              </Box>
+              <Box>
+                <Text fontWeight="bold" color="primary.700">Savings</Text>
+                <Text color="blue.600">{formatCurrency(summary.savings, currency)}</Text>
+              </Box>
+              <Box>
+                <Text fontWeight="bold" color="primary.700">Balance</Text>
+                <Text color={summary.balance >= 0 ? "green.700" : "red.700"}>{formatCurrency(summary.balance, currency)}</Text>
+              </Box>
+            </SimpleGrid>
+          </Box>
+          <Button colorScheme="primary" onClick={() => openAddModal("movement")} leftIcon={<FaPlus />} mb={2} fontSize={{ base: "sm", md: "md" }}>Add Movement / Fixed</Button>
+          <Button colorScheme="primary" onClick={() => setMonthSummaryOpen(true)} leftIcon={<FaTable />} mb={2} fontSize={{ base: "sm", md: "md" }}>Month Summary</Button>
+          <Button colorScheme="primary" onClick={() => setFixedModalOpen(true)} leftIcon={<FaTable />} mb={2} fontSize={{ base: "sm", md: "md" }}>Fixed Expenses</Button>
+        </Box>
+        {/* Movements Table */}
+        <Box w="100%" mt={2} bg="white" borderRadius="xl" boxShadow="md" p={3} maxW="100%">
+          <Flex justify="space-between" align="center" mb={2}>
+            <Text fontWeight="bold" fontSize={{ base: "md", md: "lg" }}>My Movements ({MONTHS[selectedMonth.month]})</Text>
+            <IconButton icon={<FaFileExport />} size="sm" onClick={handleExportExcel} aria-label="export" />
+          </Flex>
+          <Box overflowX="auto">
+            <Table size="sm" variant="simple" maxW="100%">
+              <Thead>
+                <Tr>
+                  <Th w="30px"></Th>
+                  <Th>Type</Th>
+                  <Th>Category</Th>
+                  <Th isNumeric>Amount</Th>
+                  <Th>Date</Th>
+                  <Th w="30px"></Th>
+                </Tr>
+              </Thead>
+              <Tbody>
+                {movements[activeUser].filter(m => getMonthIndex(m.date) === selectedMonth.month && getYear(m.date) === selectedMonth.year).map((m, i) => (
+                  <Tr key={m.id || i}>
+                    <Td>{TYPE_EMOJIS[m.type]}</Td>
+                    <Td>
+                      <Badge colorScheme={
+                        m.type === "income" ? "green" :
+                          m.type === "expenses" ? "red" :
+                            m.type === "savings" ? "blue" : "orange"
+                      }>{m.type.charAt(0).toUpperCase() + m.type.slice(1)}</Badge>
+                    </Td>
+                    <Td>{m.category}</Td>
+                    <Td isNumeric color={m.type === "income" || m.type === "savings" ? theme.colors.primary[700] : "red.600"}>
+                      {(m.type === "income" || m.type === "savings" ? "+" : "-") + formatCurrency(m.amount, m.currency)}
+                    </Td>
+                    <Td fontSize="xs">{prettyDate(m.date)}</Td>
+                    <Td>
+                      <IconButton icon={<FaTrash />} size="xs" colorScheme="red" variant="ghost" aria-label="delete" onClick={() => handleDeleteMovement(m.id)} />
+                    </Td>
+                  </Tr>
+                ))}
+                {movements[activeUser].filter(m => getMonthIndex(m.date) === selectedMonth.month && getYear(m.date) === selectedMonth.year).length === 0 &&
+                  <Tr><Td colSpan={6} textAlign="center"><Text color="gray.400">No movements for this month.</Text></Td></Tr>
+                }
+              </Tbody>
+            </Table>
+          </Box>
+        </Box>
+      </Flex>
+    );
+  }
+
+  // --- TOGETHER PANEL ---
+  function renderTogetherPanel() {
+    return (
+      <Box
+        w="100%"
+        maxW={{ base: "98vw", md: "900px" }}
+        mx="auto"
+        mt={6}
+        bg="white"
+        borderRadius="2xl"
+        p={{ base: 2, md: 8 }}
+        boxShadow="xl"
+        display="flex"
+        flexDirection="column"
+        alignItems="center"
+        overflow="hidden"
+      >
+        <Heading size="lg" color="primary.500" mb={2} textAlign="center" fontSize={{ base: "md", md: "lg" }}>
+          Together
+        </Heading>
+        <Text color="gray.500" mb={4} textAlign="center" fontSize={{ base: "sm", md: "md" }}>
+          Teamwork for your dreams.
+        </Text>
+        {/* Summary together */}
+        <Box
+          w="100%"
+          maxW={{ base: "98vw", md: "780px" }}
+          bg="primary.100"
+          borderRadius="md"
+          p={{ base: 2, md: 4 }}
+          mb={6}
+          boxShadow="sm"
+          display="flex"
+          flexDirection={{ base: "column", md: "row" }}
+          justifyContent="space-between"
+          alignItems="center"
+          gap={2}
+        >
+          {users.map((u, idx) => {
+            const summary = getSummary(movements[idx], currency, selectedMonth.month, selectedMonth.year);
+            return (
+              <Box key={u.name} flex="1" textAlign="center" p={2}>
+                <Avatar src={u.avatar} size="md" mb={1} mx="auto" />
+                <Text fontWeight="bold" color={u.color}>{u.label}</Text>
+                <Text fontSize="xs" color="primary.700">Balance: {formatCurrency(summary.balance, currency)}</Text>
+                <Text fontSize="xs" color="green.600">Income: {formatCurrency(summary.income, currency)}</Text>
+                <Text fontSize="xs" color="red.600">Expenses: {formatCurrency(summary.expenses, currency)}</Text>
+                <Text fontSize="xs" color="blue.600">Savings: {formatCurrency(summary.savings, currency)}</Text>
+              </Box>
+            );
+          })}
+        </Box>
+        {/* --- GRÁFICO DE BARRAS --- */}
+        <Box w="100%" maxW={{ base: "98vw", md: "780px" }} h={{ base: "180px", md: "320px" }} mb={6}>
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={users.map((u, idx) => {
+              const summary = getSummary(movements[idx], currency, selectedMonth.month, selectedMonth.year);
+              return {
+                name: u.label,
+                Income: summary.income,
+                Expenses: summary.expenses,
+                Savings: summary.savings
+              };
+            })}>
+              <XAxis dataKey="name" />
+              <YAxis tickFormatter={v => formatCurrency(v, currency)} />
+              <Tooltip formatter={v => formatCurrency(v, currency)} />
+              <Legend />
+              <Bar dataKey="Income" fill={theme.colors.primary[500]} />
+              <Bar dataKey="Expenses" fill={theme.colors.gabby[400]} />
+              <Bar dataKey="Savings" fill={theme.colors.jorgie[400]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </Box>
+        {/* Goals Section */}
+        <Box w="100%" mt={2} mb={2}>
+          <Flex justify="space-between" align="center" mb={2}>
+            <Text fontWeight="bold" fontSize={{ base: "md", md: "lg" }}>Goals</Text>
+            <Button colorScheme="primary" size="sm" leftIcon={<FaPlus />} fontSize={{ base: "sm", md: "md" }} onClick={handleAddGoal}>Add Goal</Button>
+          </Flex>
+          {goals.length === 0 &&
+            <Text color="gray.400" textAlign="center">No goals yet. Add your first goal!</Text>
+          }
+          <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+            {goals.map((goal, idx) => {
+              const prog = getGoalProgress(goal, currency);
+              return (
+                <Box key={goal.id || idx} borderRadius="xl" boxShadow="md" p={4} bg="primary.50">
+                  <Flex justify="space-between" align="center">
+                    <Text fontWeight="bold" color="primary.700">{goal.name}</Text>
+                    <HStack>
+                      <IconButton icon={<FaEdit />} onClick={() => handleEditGoal(idx)} aria-label="edit" size="xs" />
+                      <IconButton icon={<FaTrash />} onClick={() => handleDeleteGoal(idx)} aria-label="delete" size="xs" colorScheme="red" />
+                    </HStack>
+                  </Flex>
+                  <Text fontSize="sm" color="gray.600" mb={1}>Target: {formatCurrency(goal.target, goal.currency)}</Text>
+                  <Text fontSize="sm" color="blue.800" mb={1}>Saved: {formatCurrency(prog.totalSaved, currency)} ({prog.percent.toFixed(1)}%)</Text>
+                  <Flex gap={2}>
+                    <Badge colorScheme="blue">{users[0].label}: {formatCurrency(prog.gabbySaved, currency)}</Badge>
+                    <Badge colorScheme="cyan">{users[1].label}: {formatCurrency(prog.jorgieSaved, currency)}</Badge>
+                  </Flex>
+                  <Box w="100%" mt={2} bg="gray.200" borderRadius="md" h="10px" overflow="hidden">
+                    <Box w={`${Math.min(100, prog.percent)}%`} h="100%" bg="primary.400" />
+                  </Box>
+                  <Text fontSize="xs" color="gray.600">{goal.date ? "Goal date: " + prettyDate(goal.date) : ""}</Text>
+                </Box>
+              );
+            })}
+          </SimpleGrid>
+        </Box>
+      </Box>
+    );
+  }
+    // --- MONTH SUMMARY MODAL ---
+  function renderMonthSummaryModal() {
+    const { month: selectedMonthIdx, year: selectedYear } = selectedMonth;
+
+    return (
+      <Modal isOpen={monthSummaryOpen} onClose={() => setMonthSummaryOpen(false)} isCentered size={isMobile ? "full" : "lg"}>
+        <ModalOverlay />
+        <ModalContent borderRadius="xl" p={isMobile ? 2 : 8} mx={isMobile ? 2 : undefined}>
+          <ModalHeader textAlign="center" color="primary.700" fontWeight="bold" fontSize="2xl" pb={2}>
+            Month Summary
+          </ModalHeader>
+          <ModalBody>
+            <Flex justify="center" align="center" mb={4} wrap="wrap" gap={2}>
+              <Select
+                value={selectedMonth.month}
+                onChange={e => setSelectedMonth(s => ({ ...s, month: Number(e.target.value) }))}
+                width="auto"
+                fontWeight="bold"
+              >
+                {MONTHS.map((m, idx) => <option key={m} value={idx}>{m}</option>)}
+              </Select>
+              <Select
+                value={selectedMonth.year}
+                onChange={e => setSelectedMonth(s => ({ ...s, year: Number(e.target.value) }))}
+                width="auto"
+                fontWeight="bold"
+              >
+                {[...new Set(movements[activeUser].map(m => getYear(m.date)))].sort((a, b) => b - a).map(yr => (
+                  <option key={yr} value={yr}>{yr}</option>
+                ))}
+              </Select>
+            </Flex>
+            <Box bg="primary.100" borderRadius="lg" boxShadow="sm" p={4} mb={4} textAlign="center">
+              <Text fontWeight="bold" color="primary.700">Income: {formatCurrency(getSummary(movements[activeUser], currency, selectedMonthIdx, selectedYear).income, currency)}</Text>
+              <Text fontWeight="bold" color="primary.700">Expenses: {formatCurrency(getSummary(movements[activeUser], currency, selectedMonthIdx, selectedYear).expenses, currency)}</Text>
+              <Text fontWeight="bold" color="primary.700">Balance: {formatCurrency(getSummary(movements[activeUser], currency, selectedMonthIdx, selectedYear).balance, currency)}</Text>
+            </Box>
+            <Box mb={4}>
+              <Text fontWeight="bold" mb={2} color="primary.700" textAlign="center">Movements</Text>
+              <Box overflowX="auto">
+                <Table size="sm" variant="simple">
+                  <Thead>
+                    <Tr>
+                      <Th w="30px"></Th>
+                      <Th>Type</Th>
+                      <Th>Category</Th>
+                      <Th isNumeric>Amount</Th>
+                      <Th>Date</Th>
+                    </Tr>
+                  </Thead>
+                  <Tbody>
+                    {(movements[activeUser].filter(m => getMonthIndex(m.date) === selectedMonthIdx && getYear(m.date) === selectedYear) || []).map((m, i) => (
+                      <Tr key={m.id || i}>
+                        <Td>{TYPE_EMOJIS[m.type]}</Td>
+                        <Td>
+                          <Badge colorScheme={
+                            m.type === "income" ? "green" :
+                              m.type === "expenses" ? "red" :
+                                m.type === "savings" ? "blue" : "orange"
+                          }>{m.type.charAt(0).toUpperCase() + m.type.slice(1)}</Badge>
+                        </Td>
+                        <Td>{m.category}</Td>
+                        <Td isNumeric color={m.type === "income" || m.type === "savings" ? theme.colors.primary[700] : "red.600"}>
+                          {(m.type === "income" || m.type === "savings" ? "+" : "-") + formatCurrency(m.amount, m.currency)}
+                        </Td>
+                        <Td fontSize="xs">{prettyDate(m.date)}</Td>
+                      </Tr>
+                    ))}
+                    {(movements[activeUser].filter(m => getMonthIndex(m.date) === selectedMonthIdx && getYear(m.date) === selectedYear) || []).length === 0 &&
+                      <Tr><Td colSpan={5} textAlign="center"><Text color="gray.400">No movements for this month.</Text></Td></Tr>
+                    }
+                  </Tbody>
+                </Table>
+              </Box>
+            </Box>
+          </ModalBody>
+          <ModalFooter display="flex" justifyContent="center">
+            <Button colorScheme="primary" onClick={() => setMonthSummaryOpen(false)}>Close</Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+    );
+  }
+
+  // --- FIXED EXPENSES MODAL ---
+  function renderFixedExpensesModal() {
+    const { month: selectedMonthIdx } = selectedMonth;
+    const fixed = fixedExpenses[activeUser].filter(fx => fx.active);
+
+    return (
+      <Modal isOpen={fixedModalOpen} onClose={() => setFixedModalOpen(false)} isCentered size={isMobile ? "full" : "sm"}>
+        <ModalOverlay />
+        <ModalContent borderRadius="xl" p={isMobile ? 2 : 8} mx={isMobile ? 2 : undefined}>
+          <ModalHeader textAlign="center" color="primary.700" fontWeight="bold" fontSize="2xl">
+            Fixed Expenses ({MONTHS[selectedMonthIdx]})
+          </ModalHeader>
+          <ModalBody>
+            {fixed.length === 0 && <Text color="gray.500" textAlign="center">No fixed expenses for this month.</Text>}
+            <Box overflowX="auto">
+              <Table size="sm" variant="simple">
+                <Thead>
+                  <Tr>
+                    <Th>Name</Th>
+                    <Th isNumeric>Amount</Th>
+                    <Th>Freq</Th>
+                    <Th>Period</Th>
+                    <Th>Edit</Th>
+                    <Th>Delete</Th>
+                  </Tr>
+                </Thead>
+                <Tbody>
+                  {fixed.map((fx, i) => (
+                    <Tr key={fx.id || i}>
+                      <Td>{fx.name}</Td>
+                      <Td isNumeric>{formatCurrency(fx.amount, fx.currency)}</Td>
+                      <Td>{fx.frequency}</Td>
+                      <Td>{fx.period}</Td>
+                      <Td>
+                        <IconButton icon={<FaEdit />} size="xs" variant="ghost" aria-label="edit" onClick={() => handleEditFixed(i)} />
+                      </Td>
+                      <Td>
+                        <IconButton icon={<FaTrash />} size="xs" variant="ghost" aria-label="delete" colorScheme="red" onClick={() => handleDeleteFixed(fx.id)} />
+                      </Td>
+                    </Tr>
+                  ))}
+                </Tbody>
+              </Table>
+            </Box>
+            <Button colorScheme="primary" mt={4} w="100%" leftIcon={<FaPlus />} onClick={() => openAddModal("fixed")}>Add Fixed Expense</Button>
+          </ModalBody>
+          <ModalFooter display="flex" justifyContent="center">
+            <Button colorScheme="primary" onClick={() => setFixedModalOpen(false)}>Close</Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+    );
+  }
+
+  // --- RENDER PRINCIPAL ---
   if (showLogin) {
     return (
       <Flex minH="100vh" align="center" justify="center" bg="primary.50">
-        <Box bg="white" p={8} borderRadius="md" shadow="md" w="sm">
-          <Heading mb={4} textAlign="center" color="primary.700">Couple Finance ❤️</Heading>
-          <Text mb={2}>Choose your profile to start:</Text>
+        <Box bg="white"
+          p={{ base: 4, md: 8 }}
+          borderRadius="2xl"
+          shadow="lg"
+          w={{ base: "95vw", sm: "350px", md: "400px" }}
+          mx="auto"
+        >
+          <Heading mb={4} textAlign="center" color="primary.700" fontSize={{ base: "xl", md: "2xl" }}>Couple Finance ❤️</Heading>
+          <Text mb={2} fontSize={{ base: "sm", md: "md" }}>Select your profile to start:</Text>
           <HStack mb={4} spacing={6} justify="center">
             {users.map((u, idx) => (
               <VStack key={u.name} onClick={() => setPendingUser(idx)} cursor="pointer">
                 <Avatar src={u.avatar} size="lg" border={pendingUser === idx ? `2px solid ${u.color}` : "2px solid transparent"} />
-                <Text fontWeight={pendingUser === idx ? "bold" : "normal"} color={u.color}>{u.label}</Text>
+                <Text fontWeight={pendingUser === idx ? "bold" : "normal"} color={u.color} fontSize={{ base: "sm", md: "md" }}>{u.label}</Text>
               </VStack>
             ))}
           </HStack>
@@ -1055,22 +968,22 @@ function DashboardContent() {
               value={password}
               onChange={e => setPassword(e.target.value)}
               mb={2}
+              fontSize={{ base: "md", md: "lg" }}
             />
             {loginError && <Text color="red.500" fontSize="sm">{loginError}</Text>}
-            <Button colorScheme="primary" type="submit" w="100%" mt={2}>Login</Button>
+            <Button colorScheme="primary" type="submit" w="100%" mt={2} fontSize={{ base: "md", md: "lg" }}>Login</Button>
           </form>
         </Box>
       </Flex>
     );
   }
 
-  // --- UI: Main ---
   return (
     <Box minH="100vh" bg="primary.50">
-      {/* Header */}
-      <Box bg="primary.500" p={4} borderBottomRadius="md" boxShadow="md" textAlign="center" position="relative" color="white">
-        <Text fontSize="2xl" fontWeight="bold">Couple Finance ❤️</Text>
-        <Text fontSize="md">{getMotivational()}</Text>
+      {/* HEADER */}
+      <Box bg="primary.500" p={{ base: 3, md: 4 }} borderBottomRadius="md" boxShadow="md" textAlign="center" position="relative" color="white">
+        <Text fontSize={{ base: "xl", md: "2xl" }} fontWeight="bold">Couple Finance ❤️</Text>
+        <Text fontSize={{ base: "sm", md: "md" }}>Small wins add up.</Text>
         <HStack mt={2} justify="center">
           <Button
             leftIcon={<FaPiggyBank />}
@@ -1079,14 +992,15 @@ function DashboardContent() {
             variant="solid"
             size="sm"
             color="white"
-            bg="primary.600"
-            _hover={{ bg: "primary.700" }}
+            bg="primary.400"
+            _hover={{ bg: "primary.500" }}
+            fontSize={{ base: "xs", md: "sm" }}
           >
             Show in {currency === "USD" ? "COP" : "USD"}
           </Button>
           <IconButton
             icon={<FaSync />}
-            onClick={() => window.location.reload()}
+            onClick={() => { fetchMovements(); fetchGoals(); fetchFixed(); }}
             size="sm"
             bg="primary.400"
             color="white"
@@ -1110,719 +1024,50 @@ function DashboardContent() {
           onClick={handleLogout}
         />
       </Box>
-
-      {/* Tabs */}
-      <Tabs index={tab} onChange={setTab} variant="soft-rounded" colorScheme="primary" mt={4} align="center">
-        <TabList justifyContent="center">
-          <Tab><FaHome /> Home</Tab>
-          <Tab><FaUsers /> Together</Tab>
-        </TabList>
-        <TabPanels>
-          {/* Home Tab */}
-          <TabPanel>
-            <Flex justify="center" align="center" minH="60vh">
-              <Box w="100%" maxW="sm" mx="auto" mt={4} bg="white" borderRadius="md" p={4} boxShadow="md" textAlign="center">
-                <Avatar size="lg" src={user.avatar} mb={2} mx="auto" border={`2px solid ${user.color}`} />
-                <Heading size="md" color="primary.700" mb={2}>{user.name}'s Overview</Heading>
-                <Text color="primary.400" mb={4}>{getMotivational()}</Text>
-                {/* Main summary */}
-                <Box w="100%" bg="primary.100" borderRadius="md" p={3} mb={4} boxShadow="sm" border="1px solid" borderColor="primary.200">
-                  <Flex justify="space-between"><Text color="primary.700">Income</Text><Text>{formatCurrency(summary.income, currency)}</Text></Flex>
-                  <Flex justify="space-between"><Text color="primary.700">Expenses</Text><Text>{formatCurrency(summary.expenses, currency)}</Text></Flex>
-                  <Flex justify="space-between"><Text fontWeight="bold" color="primary.700">Balance</Text><Text>{formatCurrency(summary.balance, currency)}</Text></Flex>
-                  <Flex justify="space-between"><Text color="primary.700">Savings</Text><Text>{formatCurrency(summary.savings, currency)}</Text></Flex>
-                  <Flex justify="space-between"><Text color="primary.700">Debts</Text><Text>{formatCurrency(summary.debts, currency)}</Text></Flex>
-                </Box>
-                {/* Add button */}
-                <Button
-                  w="100%"
-                  colorScheme="primary"
-                  leftIcon={<FaPlus />}
-                  onClick={() => setShowMovementModal(true)}
-                  mb={3}
-                  size="md"
-                  fontWeight="bold"
-                  fontSize="md"
-                  borderRadius="lg"
-                  boxShadow="md"
-                  py={4}
-                  _hover={{ bg: "primary.400" }}
-                >
-                  Add Movement
-                </Button>
-                <Button colorScheme="primary" size="md" mb={4} leftIcon={<FaTable />} onClick={() => setMonthSummaryOpen(true)} fontWeight="bold" boxShadow="md">
-                  Month summary
-                </Button>
-                {/* Show last check entered */}
-                {lastCheck && (
-                  <Text color="primary.700" fontWeight="bold" mb={2}>
-                    Last paycheck: {formatCurrency(lastCheck.amount, lastCheck.currency)}
-                  </Text>
-                )}
-                {/* Movements List by Month */}
-                <Box mt={4} bg="white" borderRadius="md" p={3} boxShadow="sm">
-                  <Flex justify="space-between" align="center" mb={2}>
-                    <Text fontWeight="bold" fontSize="lg">Movements</Text>
-                    <IconButton icon={<FaFileExport />} size="sm" onClick={handleExportExcel} aria-label="export" />
-                  </Flex>
-                  <Button size="xs" variant="outline" colorScheme="primary" mb={1} onClick={() => setShowMovementsList(v => !v)}>
-                    {showMovementsList ? 'Hide Movements' : 'Show Movements'}
-                  </Button>
-                  <Select value={selectedMovMonth} onChange={e => setSelectedMovMonth(e.target.value)} mb={3} size="md" borderRadius="lg" bg="primary.100" color="primary.700" fontWeight="bold">
-                    {allMonths.map(key => {
-                      const [year, month] = key.split("-");
-                      return <option key={key} value={key}>{MONTHS[Number(month)]} {year}</option>;
-                    })}
-                  </Select>
-                  {showMovementsList ? (
-                    <>
-                      {selectedMovements.length === 0 && <Text color="gray.400">No movements this month.</Text>}
-                      {selectedMovements.length > 0 && (
-                        <Box maxH="350px" overflowY="auto" pr={2}>
-                          <Table size="sm" variant="simple" minWidth={isMobile ? "600px" : undefined}>
-                            <Thead>
-                              <Tr>
-                                <Th w="30px"></Th>
-                                <Th>Type</Th>
-                                <Th>Category</Th>
-                                <Th isNumeric>Amount</Th>
-                                <Th>Date</Th>
-                                <Th></Th>
-                              </Tr>
-                            </Thead>
-                            <Tbody>
-                              {selectedMovements.map((m, i) => (
-                                <Tr key={i}>
-                                  <Td>{TYPE_EMOJIS[m.type]}</Td>
-                                  <Td>
-                                    <Badge colorScheme={
-                                      m.type === "income" ? "green" :
-                                      m.type === "expenses" ? "red" :
-                                      m.type === "savings" ? "blue" : "orange"
-                                    }>{m.type.charAt(0).toUpperCase() + m.type.slice(1)}</Badge>
-                                  </Td>
-                                  <Td>{m.category}</Td>
-                                  <Td isNumeric color={m.type === "income" || m.type === "savings" ? theme.colors.primary[700] : "red.600"}>
-                                    {(m.type === "income" || m.type === "savings" ? "+" : "-") + formatCurrency(m.amount, m.currency)}
-                                  </Td>
-                                  <Td fontSize="xs">{prettyDate(m.date)}</Td>
-                                  <Td>
-                                    <IconButton icon={<FaTrash />} size="xs" onClick={() => handleDeleteMovement(selectedMovements.indexOf(m))} aria-label="delete movement" />
-                                  </Td>
-                                </Tr>
-                              ))}
-                            </Tbody>
-                          </Table>
-                        </Box>
-                      )}
-                    </>
-                  ) : null}
-                  {/* Pie Chart */}
-                  <Box mt={6} h="180px">
-                    {pieData.length > 0 ? (
-                      <ResponsiveContainer width="100%" height="100%">
-                        <PieChart>
-                          <Pie
-                            data={pieData}
-                            dataKey="value"
-                            nameKey="name"
-                            cx="50%"
-                            cy="50%"
-                            outerRadius={60}
-                            fill={theme.colors.primary[400]}
-                            label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-                          >
-                            {pieData.map((entry, index) => (
-                              <Cell key={`cell-${index}`} fill={PASTEL_COLORS[index % PASTEL_COLORS.length]} />
-                            ))}
-                          </Pie>
-                          <Tooltip />
-                        </PieChart>
-                      </ResponsiveContainer>
-                    ) : (
-                      <Flex align="center" justify="center" h="100%"><Text color="gray.400">No data for this month</Text></Flex>
-                    )}
-                  </Box>
-                </Box>
-              </Box>
-            </Flex>
-            {/* Month Summary Modal */}
-            <Modal isOpen={monthSummaryOpen} onClose={() => setMonthSummaryOpen(false)} size="lg">
-              <ModalOverlay />
-              <ModalContent bg="white">
-                <ModalHeader color="primary.500">{MONTHS[selectedMonth.month]} {selectedMonth.year} Summary</ModalHeader>
-                <ModalBody>
-                  <Flex align="center" justify="center" mb={2}>
-                    <IconButton
-                      icon={<FaChevronLeft />}
-                      aria-label="Previous month"
-                      variant="ghost"
-                      color="primary.500"
-                      fontSize="xl"
-                      onClick={() => {
-                        let m = selectedMonth.month - 1;
-                        let y = selectedMonth.year;
-                        if (m < 0) { m = 11; y -= 1; }
-                        setSelectedMonth({ month: m, year: y });
-                      }}
-                    />
-                    <Text fontWeight="bold" fontSize="xl" color="primary.700" mx={4}>
-                      {MONTHS[selectedMonth.month]} {selectedMonth.year}
-                    </Text>
-                    <IconButton
-                      icon={<FaChevronRight />}
-                      aria-label="Next month"
-                      variant="ghost"
-                      color="primary.500"
-                      fontSize="xl"
-                      onClick={() => {
-                        let m = selectedMonth.month + 1;
-                        let y = selectedMonth.year;
-                        if (m > 11) { m = 0; y += 1; }
-                        setSelectedMonth({ month: m, year: y });
-                      }}
-                    />
-                  </Flex>
-                  <Flex justify="center" mb={4}>
-                    <Box bg="white" borderRadius="2xl" boxShadow="lg" p={6} minW="320px" maxW="400px" textAlign="center" border="1px solid" borderColor="primary.200">
-                      <Text fontWeight="bold" fontSize="xl" color="primary.700" mb={1}>{MONTHS[selectedMonth.month]} {selectedMonth.year}</Text>
-                      <Text fontWeight="bold" color="primary.700" fontSize="md" mb={2}>{user.name}</Text>
-                      <SimpleGrid columns={2} spacing={2} mb={2}>
-                        <Box>
-                          <Text fontSize="sm" color="primary.700" fontWeight="bold">Income</Text>
-                          <Text fontSize="md" color="primary.700">{formatCurrency(getSummary(movements[activeUser], currency, selectedMonth.month, selectedMonth.year).income, currency)}</Text>
-                        </Box>
-                        <Box>
-                          <Text fontSize="sm" color="primary.700" fontWeight="bold">Expenses</Text>
-                          <Text fontSize="md" color="primary.700">{formatCurrency(getSummary(movements[activeUser], currency, selectedMonth.month, selectedMonth.year).expenses, currency)}</Text>
-                        </Box>
-                        <Box>
-                          <Text fontSize="sm" color="primary.700" fontWeight="bold">Savings</Text>
-                          <Text fontSize="md" color="primary.700">{formatCurrency(getSummary(movements[activeUser], currency, selectedMonth.month, selectedMonth.year).savings, currency)}</Text>
-                        </Box>
-                        <Box>
-                          <Text fontSize="sm" color="primary.700" fontWeight="bold">Debts</Text>
-                          <Text fontSize="md" color="primary.700">{formatCurrency(getSummary(movements[activeUser], currency, selectedMonth.month, selectedMonth.year).debts, currency)}</Text>
-                        </Box>
-                      </SimpleGrid>
-                      <Divider my={2} borderColor="primary.200" />
-                      <Text fontWeight="bold" color="primary.700" fontSize="lg" mt={2}>Balance:</Text>
-                      <Text fontSize="lg" color="primary.700">{formatCurrency(getSummary(movements[activeUser], currency, selectedMonth.month, selectedMonth.year).balance, currency)}</Text>
-                    </Box>
-                  </Flex>
-                  <Box mt={6}>
-                    <Heading size="sm" mb={2} color="primary.700">Expenses by Category</Heading>
-                    {expensesByCat.length === 0 && <Text color="gray.400">No expenses this month.</Text>}
-                    {expensesByCat.map((cat, idx) => (
-                      <Box key={cat.category} mb={3}>
-                        <Flex justify="space-between" align="center" mb={1}>
-                          <Text fontWeight="bold" color="primary.700">{cat.category}</Text>
-                          <Text color="primary.700">{formatCurrency(cat.amount, currency)}</Text>
-                          <Text color={cat.percent >= 50 ? "red.500" : cat.percent >= 20 ? "orange.400" : "yellow.600"} fontWeight="bold">{cat.percent.toFixed(0)}%</Text>
-                        </Flex>
-                        <Progress value={cat.percent} size="sm" borderRadius="md" colorScheme={cat.percent >= 50 ? "red" : cat.percent >= 20 ? "orange" : "yellow"} />
-                      </Box>
-                    ))}
-                  </Box>
-                </ModalBody>
-                <ModalFooter bg="primary.50">
-                  <Button colorScheme="primary" onClick={() => setMonthSummaryOpen(false)}>Close</Button>
-                </ModalFooter>
-              </ModalContent>
-            </Modal>
-            {/* Modal to enter paycheck/period */}
-            <Modal isOpen={showCheckModal} onClose={() => setShowCheckModal(false)} isCentered>
-              <ModalOverlay />
-              <ModalContent maxW="lg">
-                <ModalHeader>Add Movement</ModalHeader>
-                <ModalBody>
-                  <Input
-                    placeholder="Amount"
-                    type="number"
-                    value={checkAmount}
-                    onChange={e => setCheckAmount(e.target.value)}
-                    mb={3}
-                  />
-                  <Select value={checkCurrency} onChange={e => setCheckCurrency(e.target.value)} mb={3}>
-                    <option value="USD">USD</option>
-                    <option value="COP">COP</option>
-                  </Select>
-                  <Divider my={2} />
-                  <Heading size="sm" mb={2}>Movement Type</Heading>
-                  <Tabs variant="soft-rounded" colorScheme="primary" align="center" mb={4}>
-                    <TabList>
-                      <Tab onClick={() => setMovementType("income")}>Income</Tab>
-                      <Tab onClick={() => setMovementType("expenses")}>Expense</Tab>
-                      <Tab onClick={() => setMovementType("savings")}>Savings</Tab>
-                      <Tab onClick={() => setMovementType("debts")}>Debt</Tab>
-                    </TabList>
-                  </Tabs>
-                  {/* For savings and debts, show automatic deduction options */}
-                  {(movementType === "savings" || movementType === "debts") && (
-                    <Box mb={3}>
-                      <Checkbox
-                        id="autoMovement"
-                        isChecked={movementAuto}
-                        onChange={e => setMovementAuto(e.target.checked)}
-                        mb={2}
-                      >
-                        Automatically create counter movement
-                      </Checkbox>
-                      {movementAuto && (
-                        <Box mt={2}>
-                          <Input
-                            placeholder="How much is deducted from each check?"
-                            type="number"
-                            value={autoDeductAmount}
-                            onChange={e => setAutoDeductAmount(e.target.value)}
-                            mb={2}
-                          />
-                          {movementType === "debts" && (
-                            <Input
-                              placeholder="How many installments?"
-                              type="number"
-                              value={autoDeductInstallments}
-                              onChange={e => setAutoDeductInstallments(e.target.value)}
-                              mb={2}
-                            />
-                          )}
-                          {movementType === "savings" && (
-                            <Box mb={2}>
-                              <Text fontSize="sm" mb={1}>Assign savings to goal(s):</Text>
-                              <Select
-                                multiple
-                                value={autoDeductGoals}
-                                onChange={e => {
-                                  const selected = Array.from(e.target.selectedOptions, option => option.value);
-                                  setAutoDeductGoals(selected);
-                                }}
-                                size="md"
-                                bg="white"
-                                borderColor="primary.200"
-                                color="primary.700"
-                                fontWeight="bold"
-                              >
-                                {goals.map(goal => (
-                                  <option key={goal.id} value={goal.id}>{goal.name}</option>
-                                ))}
-                              </Select>
-                            </Box>
-                          )}
-                        </Box>
-                      )}
-                    </Box>
-                  )}
-                  <Text fontSize="sm" color="gray.500">You can set up automatic deductions for savings or debts here.</Text>
-                </ModalBody>
-                <ModalFooter>
-                  <Button colorScheme="primary" mr={3} onClick={handleCheckSubmit}>
-                    Save Movement
-                  </Button>
-                  <Button onClick={() => setShowCheckModal(false)}>Cancel</Button>
-                </ModalFooter>
-              </ModalContent>
-            </Modal>
-          </TabPanel>
-          {/* Together Tab */}
-          <TabPanel>
-            <Box maxW="lg" mx="auto" mt={4} bg="white" borderRadius="md" p={4} boxShadow="md">
-              <Heading size="lg" color="primary.500" mb={2} textAlign="center">Together</Heading>
-              <Text color="gray.500" mb={4} textAlign="center">Teamwork for your dreams.</Text>
-              {/* Centered summary */}
-              <Box
-                w="100%"
-                bg="primary.100"
-                borderRadius="md"
-                p={4}
-                mb={4}
-                boxShadow="sm"
-                border="1px solid"
-                borderColor="primary.200"
-                textAlign="center"
-              >
-                <SimpleGrid columns={{ base: 2, md: 5 }} spacing={2} alignItems="center">
-                  <Box>
-                    <Text fontWeight="bold" color="primary.700" fontSize="sm">Income</Text>
-                    <Text color="primary.700">{formatCurrency(togetherSummary.income, currency)}</Text>
-                  </Box>
-                  <Box>
-                    <Text fontWeight="bold" color="primary.700" fontSize="sm">Expenses</Text>
-                    <Text color="primary.700">{formatCurrency(togetherSummary.expenses, currency)}</Text>
-                  </Box>
-                  <Box>
-                    <Text fontWeight="bold" color="primary.700" fontSize="sm">Balance</Text>
-                    <Text color="primary.700">{formatCurrency(togetherSummary.balance, currency)}</Text>
-                  </Box>
-                  <Box>
-                    <Text fontWeight="bold" color="primary.700" fontSize="sm">Savings</Text>
-                    <Text color="primary.700">{formatCurrency(togetherSummary.savings, currency)}</Text>
-                  </Box>
-                  <Box>
-                    <Text fontWeight="bold" color="primary.700" fontSize="sm">Debts</Text>
-                    <Text color="primary.700">{formatCurrency(togetherSummary.debts, currency)}</Text>
-                  </Box>
-                </SimpleGrid>
-              </Box>
-              {/* Grouped Bar Chart Together - Colores por tipo */}
-              <Box mt={6} h="300px" display="flex" flexDirection="column" alignItems="center" justifyContent="center">
-                <ResponsiveContainer width="100%" height={240}>
-                  <BarChart
-                    data={[
-                      {
-                        type: 'Income',
-                        Gabby: Math.abs(getSummary(movements[0], currency, currentMonth, currentYear).income),
-                        Jorgie: Math.abs(getSummary(movements[1], currency, currentMonth, currentYear).income),
-                      },
-                      {
-                        type: 'Expenses',
-                        Gabby: Math.abs(getSummary(movements[0], currency, currentMonth, currentYear).expenses),
-                        Jorgie: Math.abs(getSummary(movements[1], currency, currentMonth, currentYear).expenses),
-                      },
-                      {
-                        type: 'Savings',
-                        Gabby: Math.abs(getSummary(movements[0], currency, currentMonth, currentYear).savings),
-                        Jorgie: Math.abs(getSummary(movements[1], currency, currentMonth, currentYear).savings),
-                      },
-                      {
-                        type: 'Debts',
-                        Gabby: Math.abs(getSummary(movements[0], currency, currentMonth, currentYear).debts),
-                        Jorgie: Math.abs(getSummary(movements[1], currency, currentMonth, currentYear).debts),
-                      },
-                    ]}
-                    margin={{ top: 20, right: 30, left: 0, bottom: 10 }}
-                    barCategoryGap={"30%"}
-                    barGap={8}
-                  >
-                    <XAxis dataKey="type" stroke={theme.colors.primary[700]} fontSize={14} />
-                    <YAxis stroke={theme.colors.primary[700]} fontSize={14} tickFormatter={v => formatCurrency(v, currency)} domain={[0, 'auto']} />
-                    <Tooltip formatter={formatCurrency} />
-                    <Bar dataKey="Gabby" name="Gabby" radius={[6, 6, 0, 0]}>
-                      {['Income', 'Expenses', 'Savings', 'Debts'].map((type, idx) => (
-                        <Cell key={type}
-                          fill={
-                            type === 'Income' ? theme.colors.gabby[400] :
-                            type === 'Expenses' ? theme.colors.gabby[500] :
-                            type === 'Savings' ? '#f3b0c3' :
-                            type === 'Debts' ? '#e48ab6' :
-                            theme.colors.gabby[400]
-                          }
-                        />
-                      ))}
-                    </Bar>
-                    <Bar dataKey="Jorgie" name="Jorgie" radius={[6, 6, 0, 0]}>
-                      {['Income', 'Expenses', 'Savings', 'Debts'].map((type, idx) => (
-                        <Cell key={type}
-                          fill={
-                            type === 'Income' ? theme.colors.jorgie[400] :
-                            type === 'Expenses' ? theme.colors.jorgie[500] :
-                            type === 'Savings' ? '#7db7e8' :
-                            type === 'Debts' ? '#4a90e2' :
-                            theme.colors.jorgie[400]
-                          }
-                        />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-                {/* Leyenda personalizada */}
-                <HStack mt={2} spacing={8} justify="center">
-                  <HStack><Box w={4} h={4} borderRadius="full" bg={theme.colors.gabby[400]} /><Text fontWeight="bold" color="primary.700">Gabby</Text></HStack>
-                  <HStack><Box w={4} h={4} borderRadius="full" bg={theme.colors.jorgie[400]} /><Text fontWeight="bold" color="primary.700">Jorgie</Text></HStack>
-                </HStack>
-              </Box>
-              <Divider my={4} borderColor="primary.200" />
-              {/* Goals Section ONLY here */}
-              <Box mb={8}>
-                <Flex justify="space-between" align="center" mb={4}>
-                  <Heading size="md" color="primary.500">Our Goals</Heading>
-                  <HStack>
-                    <Select value={goalCurrency} onChange={e => setGoalCurrency(e.target.value)} size="sm" width="90px" bg="white" borderColor="primary.200" color="primary.700" fontWeight="bold">
-                      <option value="USD">USD</option>
-                      <option value="COP">COP</option>
-                    </Select>
-                    <Button leftIcon={<FaPlus />} size="sm" colorScheme="primary" onClick={handleAddGoal}>Add Goal</Button>
-                  </HStack>
-                </Flex>
-                <SimpleGrid columns={{ sm: 1, md: 2, lg: 3 }} spacing={4}>
-                  {goals.map((goal, idx) => {
-                    const displayTarget = convertCurrency(Number(goal.target), goal.currency, goalCurrency);
-                    // Aportes de cada usuario
-                    const savedGabby = movements[0]
-                      .filter(m => m.type === "savings" && m.category === `Saving for ${goal.name}`)
-                      .reduce((acc, curr) => acc + convertCurrency(Number(curr.amount), curr.currency, goalCurrency), 0);
-                    const savedJorgie = movements[1]
-                      .filter(m => m.type === "savings" && m.category === `Saving for ${goal.name}`)
-                      .reduce((acc, curr) => acc + convertCurrency(Number(curr.amount), curr.currency, goalCurrency), 0);
-                    const saved = savedGabby + savedJorgie;
-                    const percent = displayTarget > 0 ? (saved / displayTarget) * 100 : 0;
-                    const percentGabby = displayTarget > 0 ? (savedGabby / displayTarget) * 100 : 0;
-                    const percentJorgie = displayTarget > 0 ? (savedJorgie / displayTarget) * 100 : 0;
-                    return (
-                      <Box key={idx} borderWidth={2} borderColor="primary.200" borderRadius="lg" p={4} boxShadow="lg" bg="primary.50" transition="0.2s" _hover={{ boxShadow: "xl", borderColor: "primary.400" }}>
-                        <HStack mb={2}>
-                          <FaHome color={theme.colors.primary[500]} size={20} />
-                          <Heading size="sm" color="primary.700">{goal.name}</Heading>
-                        </HStack>
-                        <Text fontSize="sm" color="primary.700" fontWeight="bold">Target:</Text>
-                        <Text fontSize="md" color="primary.700" fontWeight="bold">{formatCurrency(displayTarget, goalCurrency)}</Text>
-                        <Text fontSize="xs" color="primary.500">({formatCurrency(Number(goal.target), goal.currency)} {goal.currency})</Text>
-                        {/* Progreso visual limpio */}
-                        <Text fontSize="md" color="primary.700" fontWeight="bold" mt={2} mb={1}>{formatCurrency(saved, goalCurrency)} / {formatCurrency(displayTarget, goalCurrency)}</Text>
-                        <Text fontSize="sm" color="primary.700" fontWeight="bold" mb={1}>{percent.toFixed(1)}% achieved</Text>
-                        <Box mt={1} mb={2} w="100%" h="22px" borderRadius="full" bg="primary.100" position="relative" overflow="hidden" boxShadow="sm">
-                          <Box position="absolute" left={0} top={0} h="100%" bg={theme.colors.gabby[400]} width={`${percentGabby}%`} borderRadius="full" transition="width 0.5s" />
-                          <Box position="absolute" left={`${percentGabby}%`} top={0} h="100%" bg={theme.colors.jorgie[400]} width={`${percentJorgie}%`} borderRadius="full" transition="width 0.5s" />
-                        </Box>
-                        <Flex justify="space-between" fontSize="xs" color="primary.700" mb={1} mt={1}>
-                          <HStack spacing={1}><Box w={2} h={2} borderRadius="full" bg={theme.colors.gabby[400]} /><Text>Gabby: {formatCurrency(savedGabby, goalCurrency)}</Text></HStack>
-                          <HStack spacing={1}><Box w={2} h={2} borderRadius="full" bg={theme.colors.jorgie[400]} /><Text>Jorgie: {formatCurrency(savedJorgie, goalCurrency)}</Text></HStack>
-                        </Flex>
-                        <Text fontSize="xs" color="primary.700" mb={1}>Target Date: {prettyDate(goal.date)}</Text>
-                        <HStack mt={2}>
-                          <Button size="sm" colorScheme="primary" onClick={() => handleEditGoal(idx)}>Edit</Button>
-                          <Button size="sm" colorScheme="red" onClick={() => handleDeleteGoal(idx)}>Delete</Button>
-                        </HStack>
-                      </Box>
-                    );
-                  })}
-                </SimpleGrid>
-                {/* Modal de Goals aquí */}
-                <Modal isOpen={goalModalOpen} onClose={() => setGoalModalOpen(false)}>
-                  <ModalOverlay />
-                  <ModalContent bg="white">
-                    <ModalHeader color="primary.500">{editGoalIndex !== null ? "Edit Goal" : "Add New Goal"}</ModalHeader>
-                    <ModalBody>
-                      <Input placeholder="Goal Name" mb={2} name="name" value={goalForm.name} onChange={handleGoalFormChange} />
-                      <HStack mb={2}>
-                        <Input
-                          placeholder="Target Amount"
-                          type="number"
-                          name="target"
-                          value={goalForm.target}
-                          onChange={e => setGoalForm(f => ({ ...f, target: e.target.value.replace(/[^\d]/g, '') }))}
-                        />
-                        <Select name="currency" value={goalForm.currency || goalCurrency} onChange={handleGoalFormChange} width="90px">
-                          <option value="USD">USD</option>
-                          <option value="COP">COP</option>
-                        </Select>
-                      </HStack>
-                      <Input placeholder="Target Date" mb={2} type="date" name="date" value={goalForm.date} onChange={handleGoalFormChange} />
-                    </ModalBody>
-                    <ModalFooter bg="primary.50">
-                      <Button colorScheme="primary" mr={3} onClick={handleGoalSubmit}>
-                        {editGoalIndex !== null ? "Update Goal" : "Add Goal"}
-                      </Button>
-                      <Button onClick={() => setGoalModalOpen(false)}>Cancel</Button>
-                    </ModalFooter>
-                  </ModalContent>
-                </Modal>
-              </Box>
-            </Box>
-          </TabPanel>
-        </TabPanels>
-      </Tabs>
-
-      {/* Modal Add Movement */}
-      <Modal isOpen={showMovementModal} onClose={() => setShowMovementModal(false)} isCentered>
-        <ModalOverlay />
-        <ModalContent maxW="lg" bg="primary.50" borderRadius="2xl" boxShadow="2xl">
-          <ModalHeader textAlign="center" color="primary.700" fontWeight="bold" fontSize="xl" pb={0}>
-            Add Movement
-          </ModalHeader>
-          <ModalBody pt={4} pb={2} px={6}>
-            {/* Movement Type label uniform, smaller and normal weight */}
-            <Text fontWeight="normal" fontSize="md" color="primary.700" mb={3}>Movement Type</Text>
-            <Tabs variant="soft-rounded" colorScheme="primary" align="center" mb={5} index={
-              movementType === "income" ? 0 :
-              movementType === "expenses" ? 1 :
-              movementType === "savings" ? 2 : 3
-            } onChange={i => setMovementType(["income", "expenses", "savings", "debts"][i])}>
-              <TabList justifyContent="center">
-                <Tab _selected={{ bg: 'primary.400', color: 'white', fontWeight: 'normal', boxShadow: 'md' }} px={4} py={1} borderRadius="lg" fontWeight="normal" fontSize="md">Income</Tab>
-                <Tab _selected={{ bg: 'primary.400', color: 'white', fontWeight: 'normal', boxShadow: 'md' }} px={4} py={1} borderRadius="lg" fontWeight="normal" fontSize="md">Expense</Tab>
-                <Tab _selected={{ bg: 'primary.400', color: 'white', fontWeight: 'normal', boxShadow: 'md' }} px={4} py={1} borderRadius="lg" fontWeight="normal" fontSize="md">Savings</Tab>
-                <Tab _selected={{ bg: 'primary.400', color: 'white', fontWeight: 'normal', boxShadow: 'md' }} px={4} py={1} borderRadius="lg" fontWeight="normal" fontSize="md">Debt</Tab>
-              </TabList>
-            </Tabs>
-            <Input
-              placeholder="Amount"
-              type="number"
-              value={movementAmount}
-              onChange={e => setMovementAmount(e.target.value)}
-              mb={4}
-              size="md"
-              borderRadius="lg"
-              bg="white"
-              borderColor="primary.200"
-              color="primary.700"
-              fontWeight="normal"
-              fontSize="md"
-              _placeholder={{ color: 'primary.300' }}
-            />
-            <Select value={movementCurrency} onChange={e => setMovementCurrency(e.target.value)} mb={4} size="md" borderRadius="lg" bg="white" borderColor="primary.200" color="primary.700" fontWeight="normal" fontSize="md">
-              <option value="USD">USD</option>
-              <option value="COP">COP</option>
-            </Select>
-            <Divider my={2} />
-            {/* Fields by type */}
-            {movementType === "income" && (
-              <Box mb={4}>
-                <Select value={movementSource} onChange={e => setMovementSource(e.target.value)} mb={2} size="md" borderRadius="lg" bg="white" borderColor="primary.200" color="primary.700" fontWeight="normal" fontSize="md">
-                  {INCOME_SOURCES.map(src => <option key={src} value={src}>{src}</option>)}
-                </Select>
-              </Box>
-            )}
-            {movementType === "expenses" && (
-              <Box mb={4}>
-                <Select value={movementCategory} onChange={e => setMovementCategory(e.target.value)} mb={2} size="md" borderRadius="lg" bg="white" borderColor="primary.200" color="primary.700" fontWeight="normal" fontSize="md">
-                  <option value="">Select category</option>
-                  {CATEGORIES.map(cat => <option key={cat} value={cat}>{cat}</option>)}
-                </Select>
-              </Box>
-            )}
-            {movementType === "savings" && (
-              <Box mb={4}>
-                <Select value={movementSource} onChange={e => setMovementSource(e.target.value)} mb={2} size="md" borderRadius="lg" bg="white" borderColor="primary.200" color="primary.700" fontWeight="normal" fontSize="md">
-                  {INCOME_SOURCES.map(src => <option key={src} value={src}>{src}</option>)}
-                </Select>
-                {/* Selector de goal para cualquier ahorro */}
-                <Select
-                  value={movementCategory}
-                  onChange={e => setMovementCategory(e.target.value)}
-                  mb={2}
-                  size="md"
-                  borderRadius="lg"
-                  bg="white"
-                  borderColor="primary.200"
-                  color="primary.700"
-                  fontWeight="normal"
-                  fontSize="md"
-                >
-                  <option value="">General Savings</option>
-                  {goals.map(goal => (
-                    <option key={goal.id} value={`Saving for ${goal.name}`}>{goal.name}</option>
-                  ))}
-                </Select>
-              </Box>
-            )}
-            {movementType === "debts" && (
-              <Box mb={4}>
-                <Select value={movementCategory} onChange={e => setMovementCategory(e.target.value)} mb={2} size="md" borderRadius="lg" bg="white" borderColor="primary.200" color="primary.700" fontWeight="normal" fontSize="md">
-                  <option value="">Select category</option>
-                  {CATEGORIES.map(cat => <option key={cat} value={cat}>{cat}</option>)}
-                </Select>
-              </Box>
-            )}
-            {/* Automatic counter movement for savings and debts */}
-            {(movementType === "savings" || movementType === "debts") && (
-              <Box mb={4} bg="primary.100" borderRadius="lg" p={3}>
-                <Checkbox
-                  id="autoMovement"
-                  isChecked={movementAuto}
-                  onChange={e => setMovementAuto(e.target.checked)}
-                  mb={2}
-                  colorScheme="primary"
-                  size="md"
-                  fontWeight="normal"
-                  fontSize="md"
-                >
-                  Automatically create counter movement
-                </Checkbox>
-                {movementAuto && (
-                  <Box mt={2}>
-                    <Input
-                      placeholder="How much is deducted from each check?"
-                      type="number"
-                      value={autoDeductAmount}
-                      onChange={e => setAutoDeductAmount(e.target.value)}
-                      mb={2}
-                      size="md"
-                      borderRadius="lg"
-                      bg="white"
-                      borderColor="primary.200"
-                      color="primary.700"
-                      fontWeight="normal"
-                      fontSize="md"
-                    />
-                    <Select value={autoDeductCheck} onChange={e => setAutoDeductCheck(e.target.value)} mb={2} size="md" borderRadius="lg" bg="white" borderColor="primary.200" color="primary.700" fontWeight="normal" fontSize="md">
-                      {INCOME_SOURCES.map(src => <option key={src} value={src}>{src}</option>)}
-                    </Select>
-                    {movementType === "debts" && movementAuto && (
-                      <>
-                        <Input
-                          placeholder="How many installments?"
-                          type="number"
-                          value={autoDeductInstallments}
-                          onChange={e => setAutoDeductInstallments(e.target.value)}
-                          mb={2}
-                          size="md"
-                          borderRadius="lg"
-                          bg="white"
-                          borderColor="primary.200"
-                          color="primary.700"
-                          fontWeight="normal"
-                          fontSize="md"
-                        />
-                        <Box mb={2}>
-                          <Text fontSize="md" color="primary.700" mb={1}>Frequency:</Text>
-                          <Select
-                            value={debtFrequency}
-                            onChange={e => setDebtFrequency(e.target.value)}
-                            size="md"
-                            borderRadius="lg"
-                            bg="white"
-                            borderColor="primary.200"
-                            color="primary.700"
-                            fontWeight="normal"
-                            fontSize="md"
-                            mb={2}
-                          >
-                            <option value="Monthly">Monthly</option>
-                            <option value="Biweekly">Biweekly</option>
-                          </Select>
-                        </Box>
-                      </>
-                    )}
-                    
-                    {movementType === "savings" && (
-                      <Box mb={2}>
-                        <Text fontSize="md" mb={1} color="primary.700" fontWeight="normal">Assign savings to goal:</Text>
-                        <Select
-                          value={autoDeductGoals[0] || ""}
-                          onChange={e => setAutoDeductGoals([e.target.value])}
-                          size="md"
-                          bg="white"
-                          borderColor="primary.200"
-                          color="primary.700"
-                          borderRadius="lg"
-                          fontWeight="normal"
-                          fontSize="md"
-                        >
-                          <option value="">Select goal</option>
-                          {goals.map(goal => (
-                            <option key={goal.id} value={goal.id}>{goal.name}</option>
-                          ))}
-                        </Select>
-                      </Box>
-                    )}
-                  </Box>
-                )}
-              </Box>
-            )}
-            <Text fontSize="md" color="primary.400" mt={2} mb={1} textAlign="center">You can set up automatic deductions for savings or debts here.</Text>
-          </ModalBody>
-          <ModalFooter bg="primary.50" borderBottomRadius="2xl">
-            <Button colorScheme="primary" mr={3} onClick={handleUnifiedMovementSubmit} size="md" fontWeight="normal" px={6} py={4} boxShadow="md" borderRadius="lg" fontSize="md">
-              Save Movement
-            </Button>
-            <Button onClick={() => setShowMovementModal(false)} size="md" borderRadius="lg" fontSize="md" fontWeight="normal">Cancel</Button>
-          </ModalFooter>
-        </ModalContent>
-      </Modal>
+      <Flex justify="center" mt={4}>
+        <Tabs isFitted variant="soft-rounded" colorScheme="primary"
+          align="center"
+          w={{ base: "98vw", md: "600px" }}
+          borderRadius="lg"
+        >
+          <TabList
+            justifyContent="center"
+            w="100%"
+            rounded="lg"
+            bg="primary.100"
+            mx="auto"
+            fontSize={{ base: "xs", md: "md" }}
+          >
+            <Tab flex="1" mx={1} borderRadius="lg" fontWeight="bold"><FaHome /> Home</Tab>
+            <Tab flex="1" mx={1} borderRadius="lg" fontWeight="bold"><FaUsers /> Together</Tab>
+          </TabList>
+          <TabPanels>
+            <TabPanel px={{ base: 0, md: 4 }}>
+              {renderHomePanel && renderHomePanel()}
+            </TabPanel>
+            <TabPanel px={{ base: 0, md: 4 }}>
+              {renderTogetherPanel && renderTogetherPanel()}
+            </TabPanel>
+          </TabPanels>
+        </Tabs>
+      </Flex>
+      {renderAddModal()}
+      {renderMonthSummaryModal()}
+      {renderFixedExpensesModal()}
+      {/* NUEVO: Goal Modal */}
+      <GoalModal
+        isOpen={goalModalOpen}
+        onClose={() => setGoalModalOpen(false)}
+        goalForm={goalForm}
+        setGoalForm={setGoalForm}
+        handleGoalSubmit={handleGoalSubmit}
+        isEditing={editGoalIndex !== null}
+      />
     </Box>
   );
 }
 
+// Componente principal
 function Dashboard() {
   return (
     <ChakraProvider theme={theme}>
